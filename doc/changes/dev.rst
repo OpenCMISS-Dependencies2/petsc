@@ -13,7 +13,15 @@ Changes: Development
 
 .. rubric:: Configure/Build:
 
+- Add ``--with-openmp-kernels``
+
 .. rubric:: Sys:
+
+- Add ``PetscPragmaUseOMPKernels``
+- Deprecate ``PetscOptionsRestoreViewer()`` in favor of ``PetscViewerDestroy()``
+- Deprecate ``PetscOptionsGetViewer()``, and ``PetscOptionsGetViewers()`` in favor of ``PetscOptionsCreateViewer()`` and ``PetscOptionsCreateViewers()``
+- Deprecate ``PetscOptionsPushGetViewerOff()``, ``PetscOptionsPopGetViewerOff()``, and ``PetscOptionsGetViewerOff()`` in favor of
+  ``PetscOptionsPushCreateViewerOff()``, ``PetscOptionsPopCreateViewerOff()``, and ``PetscOptionsGetCreateViewerOff()``
 
 .. rubric:: Event Logging:
 
@@ -34,6 +42,7 @@ Changes: Development
 - The ``IS`` passed to ``VecISAXPY()``, ``VecISCopy()``. ``VecISSet()``, and ``VecISShift()`` must have the same communicator of the vectors used
 - Make ``VecLock`` API active in optimized mode
 - ``VecNestSetSubVec()`` and ``VecNestSetSubVecs()`` now take references to input vectors rather than creating duplicates
+- Deprecate ``VecSetInf()`` with ``VecFlag()``
 
 .. rubric:: PetscSection:
 

@@ -223,8 +223,8 @@ PetscErrorCode PetscTraceBackErrorHandler(MPI_Comm comm, int line, const char *f
         if (text) ierr = (*PetscErrorPrintf)("%s\n", text);
       }
       if (mess) ierr = (*PetscErrorPrintf)("%s\n", mess);
-#if defined(PETSC_HAVE_CUDA_MIN_ARCH)
-      int confCudaArch = PETSC_HAVE_CUDA_MIN_ARCH;   // if PETSc was configured with numbered CUDA arches, get the min arch.
+#if defined(PETSC_PKG_CUDA_MIN_ARCH)
+      int confCudaArch = PETSC_PKG_CUDA_MIN_ARCH;    // if PETSc was configured with numbered CUDA arches, get the min arch.
       int runCudaArch  = PetscDeviceCUPMRuntimeArch; // 0 indicates the code has never initialized a cuda device.
       if (runCudaArch && confCudaArch > runCudaArch) {
         ierr = (*PetscErrorPrintf)("WARNING! Run on a CUDA device with GPU architecture %d, but PETSc was configured with a minimal GPU architecture %d.\n", runCudaArch, confCudaArch);
@@ -237,7 +237,7 @@ PetscErrorCode PetscTraceBackErrorHandler(MPI_Comm comm, int line, const char *f
         size_t clen;
 
         ierr = (*PetscErrorPrintf)("%s\n", version);
-        if (PetscErrorPrintfInitializeCalled) ierr = (*PetscErrorPrintf)("%s with PETSC_ARCH %s on %s by %s %s\n", pname, arch, hostname, username, date);
+        if (PetscErrorPrintfInitializeCalled) ierr = (*PetscErrorPrintf)("%s with %d MPI process(es) and PETSC_ARCH %s on %s by %s %s\n", pname, PetscGlobalSize, arch, hostname, username, date);
         ierr = PetscStrlen(petscconfigureoptions, &clen);
         ierr = (*PetscErrorPrintf)("Configure options: %s\n", clen ? petscconfigureoptions : "none used");
       }

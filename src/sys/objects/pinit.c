@@ -814,7 +814,7 @@ PETSC_INTERN PetscErrorCode PetscInitialize_Common(const char *prog, const char 
     }
     #endif
       /* check for Open MPI version, it is not part of the MPI ABI initiative (is it part of another initiative that needs to be handled?) */
-  #elif defined(OMPI_MAJOR_VERSION)
+  #elif defined(PETSC_HAVE_OPENMPI)
     {
       char     *ver, bs[MPI_MAX_LIBRARY_VERSION_STRING], *bsf;
       PetscBool flg                                              = PETSC_FALSE;
@@ -825,14 +825,14 @@ PETSC_INTERN PetscErrorCode PetscInitialize_Common(const char *prog, const char 
       for (i = 0; i < PSTRSZ; i++) {
         PetscCall(PetscStrstr(mpilibraryversion, ompistr1[i], &ver));
         if (ver) {
-          PetscCall(PetscSNPrintf(bs, MPI_MAX_LIBRARY_VERSION_STRING, "%s%d.%d", ompistr2[i], OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION));
+          PetscCall(PetscSNPrintf(bs, MPI_MAX_LIBRARY_VERSION_STRING, "%s%d.%d", ompistr2[i], PETSC_PKG_OPENMPI_VERSION_MAJOR, PETSC_PKG_OPENMPI_VERSION_MINOR));
           PetscCall(PetscStrstr(ver, bs, &bsf));
           if (bsf) flg = PETSC_TRUE;
           break;
         }
       }
       if (!flg) {
-        PetscCall(PetscInfo(NULL, "PETSc warning --- Open MPI library version \n%s does not match what PETSc was compiled with %d.%d.\n", mpilibraryversion, OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION));
+        PetscCall(PetscInfo(NULL, "PETSc warning --- Open MPI library version \n%s does not match what PETSc was compiled with %d.%d.\n", mpilibraryversion, PETSC_PKG_OPENMPI_VERSION_MAJOR, PETSC_PKG_OPENMPI_VERSION_MINOR));
         flg = PETSC_TRUE;
       }
     }
@@ -1075,6 +1075,10 @@ PETSC_INTERN PetscErrorCode PetscInitialize_Common(const char *prog, const char 
   #elif defined(PETSC_HAVE_MKL_SET_NUM_THREADS)
     threads = getenv("MKL_NUM_THREADS");
     if (threads) PetscCall(PetscInfo(NULL, "BLAS: Environment number of MKL threads %s given by MKL_NUM_THREADS\n", threads));
+    if (!threads) {
+      threads = getenv("OMP_NUM_THREADS");
+      if (threads) PetscCall(PetscInfo(NULL, "BLAS: Environment number of MKL threads %s given by OMP_NUM_THREADS\n", threads));
+    }
   #elif defined(PETSC_HAVE_OPENBLAS_SET_NUM_THREADS)
     threads = getenv("OPENBLAS_NUM_THREADS");
     if (threads) PetscCall(PetscInfo(NULL, "BLAS: Environment number of OpenBLAS threads %s given by OPENBLAS_NUM_THREADS\n", threads));
@@ -1085,8 +1089,11 @@ PETSC_INTERN PetscErrorCode PetscInitialize_Common(const char *prog, const char 
   #endif
     if (threads) (void)sscanf(threads, "%" PetscInt_FMT, &PetscNumBLASThreads);
     PetscCall(PetscOptionsInt("-blas_num_threads", "Number of threads to use for BLAS operations", "None", PetscNumBLASThreads, &PetscNumBLASThreads, &flg));
-    PetscCall(PetscBLASSetNumThreads(PetscNumBLASThreads));
-    if (blas_view_flag) PetscCall(PetscPrintf(PETSC_COMM_WORLD, "BLAS: number of threads %" PetscInt_FMT "\n", PetscNumBLASThreads));
+    if (flg) PetscCall(PetscInfo(NULL, "BLAS: Command line number of BLAS thread %" PetscInt_FMT "given by -blas_num_threads\n", PetscNumBLASThreads));
+    if (flg || threads) {
+      PetscCall(PetscBLASSetNumThreads(PetscNumBLASThreads));
+      if (blas_view_flag) PetscCall(PetscPrintf(PETSC_COMM_WORLD, "BLAS: number of threads %" PetscInt_FMT "\n", PetscNumBLASThreads));
+    }
   }
 #elif defined(PETSC_HAVE_APPLE_ACCELERATE)
   PetscCall(PetscInfo(NULL, "BLAS: Apple Accelerate library, thread support with no user control\n"));
@@ -1112,17 +1119,17 @@ PETSC_INTERN PetscErrorCode PetscInitialize_Common(const char *prog, const char 
 #if defined(PETSC_HAVE_HWLOC)
   {
     PetscViewer viewer;
-    PetscCall(PetscOptionsGetViewer(PETSC_COMM_WORLD, NULL, NULL, "-process_view", &viewer, NULL, &flg));
+    PetscCall(PetscOptionsCreateViewer(PETSC_COMM_WORLD, NULL, NULL, "-process_view", &viewer, NULL, &flg));
     if (flg) {
       PetscCall(PetscProcessPlacementView(viewer));
-      PetscCall(PetscOptionsRestoreViewer(&viewer));
+      PetscCall(PetscViewerDestroy(&viewer));
     }
   }
 #endif
 
   flg = PETSC_TRUE;
   PetscCall(PetscOptionsGetBool(NULL, NULL, "-viewfromoptions", &flg, NULL));
-  if (!flg) PetscCall(PetscOptionsPushGetViewerOff(PETSC_TRUE));
+  if (!flg) PetscCall(PetscOptionsPushCreateViewerOff(PETSC_TRUE));
 
 #if defined(PETSC_HAVE_ADIOS)
   PetscCallExternal(adios_init_noxml, PETSC_COMM_WORLD);
@@ -1491,9 +1498,9 @@ PetscErrorCode PetscFinalize(void)
   PetscCall(PetscObjectRegisterDestroyAll());
 
   if (PetscDefined(USE_LOG)) {
-    PetscCall(PetscOptionsPushGetViewerOff(PETSC_FALSE));
+    PetscCall(PetscOptionsPushCreateViewerOff(PETSC_FALSE));
     PetscCall(PetscLogViewFromOptions());
-    PetscCall(PetscOptionsPopGetViewerOff());
+    PetscCall(PetscOptionsPopCreateViewerOff());
     //  It should be turned on with PetscLogGpuTime() and never turned off except in this place
     PetscLogGpuTimeFlag = PETSC_FALSE;
 
