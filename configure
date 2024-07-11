@@ -11,6 +11,6 @@ if sys.version_info < (3,4):
   print(banner_line)
   sys.exit(4)
 
-sys.path.insert(0, os.path.abspath('config'))
+sys.path.insert(0, os.path.abspath(os.path.abspath(os.path.dirname(__file__))+'/config'))
 import configure
 configure.petsc_configure([])
