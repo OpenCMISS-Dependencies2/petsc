@@ -27,7 +27,8 @@ typedef struct {
 static PetscErrorCode VecView_MPI_Draw_DA2d_Zoom(PetscDraw draw, void *ctx)
 {
   ZoomCtx           *zctx = (ZoomCtx *)ctx;
-  PetscInt           m, n, i, j, k, dof, id, c1, c2, c3, c4;
+  PetscInt           m, n, i, j, k, dof, id;
+  int                c1, c2, c3, c4;
   PetscReal          min, max, x1, x2, x3, x4, y_1, y2, y3, y4;
   const PetscScalar *xy, *v;
 
@@ -321,11 +322,11 @@ static PetscErrorCode VecGetHDF5ChunkSize(DM_DA *da, Vec xin, PetscInt dimension
   hsize_t     avg_local_vec_size, KiB = 1024, MiB = KiB * KiB, GiB = MiB * KiB, min_size = MiB;
   hsize_t     max_chunks     = 64 * KiB; /* HDF5 internal limitation */
   hsize_t     max_chunk_size = 4 * GiB;  /* HDF5 internal limitation */
-  PetscInt    zslices = da->p, yslices = da->n, xslices = da->m;
+  hsize_t     zslices = da->p, yslices = da->n, xslices = da->m;
 
   PetscFunctionBegin;
   PetscCallMPI(MPI_Comm_size(PetscObjectComm((PetscObject)xin), &comm_size));
-  avg_local_vec_size = (hsize_t)PetscCeilInt(vec_size, comm_size); /* we will attempt to use this as the chunk size */
+  avg_local_vec_size = (hsize_t)PetscCeilInt64(vec_size, comm_size); /* we will attempt to use this as the chunk size */
 
   target_size = (hsize_t)PetscMin((PetscInt64)vec_size, PetscMin((PetscInt64)max_chunk_size, PetscMax((PetscInt64)avg_local_vec_size, PetscMax(PetscCeilInt64(vec_size, max_chunks), (PetscInt64)min_size))));
   /* following line uses sizeof(PetscReal) instead of sizeof(PetscScalar) because the last dimension of chunkDims[] captures the 2* when complex numbers are being used */
@@ -341,16 +342,19 @@ static PetscErrorCode VecGetHDF5ChunkSize(DM_DA *da, Vec xin, PetscInt dimension
    reliably find the right number. And even then it may or may not be enough.
    */
   if (avg_local_vec_size > max_chunk_size) {
+    hsize_t zslices_full = da->P;
+    hsize_t yslices_full = da->N;
+
     /* check if we can just split local z-axis: is that enough? */
-    zslices = PetscCeilInt(vec_size, da->p * max_chunk_size) * zslices;
-    if (zslices > da->P) {
+    zslices = PetscCeilInt64(vec_size, da->p * max_chunk_size) * zslices;
+    if (zslices > zslices_full) {
       /* lattice is too large in xy-directions, splitting z only is not enough */
-      zslices = da->P;
-      yslices = PetscCeilInt(vec_size, zslices * da->n * max_chunk_size) * yslices;
-      if (yslices > da->N) {
+      zslices = zslices_full;
+      yslices = PetscCeilInt64(vec_size, zslices * da->n * max_chunk_size) * yslices;
+      if (yslices > yslices_full) {
         /* lattice is too large in x-direction, splitting along z, y is not enough */
-        yslices = da->N;
-        xslices = PetscCeilInt(vec_size, zslices * yslices * da->m * max_chunk_size) * xslices;
+        yslices = yslices_full;
+        xslices = PetscCeilInt64(vec_size, zslices * yslices * da->m * max_chunk_size) * xslices;
       }
     }
     dim = 0;
@@ -422,7 +426,7 @@ static PetscErrorCode VecView_MPI_HDF5_DA(Vec xin, PetscViewer viewer)
   hsize_t            dim;
   hsize_t            maxDims[6] = {0}, dims[6] = {0}, chunkDims[6] = {0}, count[6] = {0}, offset[6] = {0}; /* we depend on these being sane later on  */
   PetscBool          timestepping = PETSC_FALSE, dim2, spoutput;
-  PetscInt           timestep     = PETSC_MIN_INT, dimension;
+  PetscInt           timestep     = PETSC_INT_MIN, dimension;
   const PetscScalar *x;
   const char        *vecname;
 
@@ -487,7 +491,7 @@ static PetscErrorCode VecView_MPI_HDF5_DA(Vec xin, PetscViewer viewer)
 
   PetscCall(VecGetHDF5ChunkSize(da, xin, dimension, timestep, chunkDims));
 
-  PetscCallHDF5Return(filespace, H5Screate_simple, (dim, dims, maxDims));
+  PetscCallHDF5Return(filespace, H5Screate_simple, ((int)dim, dims, maxDims));
 
   #if defined(PETSC_USE_REAL_SINGLE)
   memscalartype  = H5T_NATIVE_FLOAT;
@@ -507,7 +511,7 @@ static PetscErrorCode VecView_MPI_HDF5_DA(Vec xin, PetscViewer viewer)
   if (!H5Lexists(group, vecname, H5P_DEFAULT)) {
     /* Create chunk */
     PetscCallHDF5Return(chunkspace, H5Pcreate, (H5P_DATASET_CREATE));
-    PetscCallHDF5(H5Pset_chunk, (chunkspace, dim, chunkDims));
+    PetscCallHDF5(H5Pset_chunk, (chunkspace, (int)dim, chunkDims));
 
     PetscCallHDF5Return(dset_id, H5Dcreate2, (group, vecname, filescalartype, filespace, H5P_DEFAULT, chunkspace, H5P_DEFAULT));
   } else {
@@ -541,7 +545,7 @@ static PetscErrorCode VecView_MPI_HDF5_DA(Vec xin, PetscViewer viewer)
   #if defined(PETSC_USE_COMPLEX)
   count[dim++] = 2;
   #endif
-  PetscCallHDF5Return(memspace, H5Screate_simple, (dim, count, NULL));
+  PetscCallHDF5Return(memspace, H5Screate_simple, ((int)dim, count, NULL));
   PetscCallHDF5Return(filespace, H5Dget_space, (dset_id));
   PetscCallHDF5(H5Sselect_hyperslab, (filespace, H5S_SELECT_SET, offset, NULL, count, NULL));
 
@@ -614,7 +618,7 @@ static PetscErrorCode DMDAArrayMPIIO(DM da, PetscViewer viewer, Vec xin, PetscBo
   PetscCall(PetscMPIIntCast(dd->xs / dof, lstarts + 1));
   PetscCall(PetscMPIIntCast(dd->ys, lstarts + 2));
   PetscCall(PetscMPIIntCast(dd->zs, lstarts + 3));
-  PetscCallMPI(MPI_Type_create_subarray(da->dim + 1, gsizes, lsizes, lstarts, MPI_ORDER_FORTRAN, MPIU_SCALAR, &view));
+  PetscCallMPI(MPI_Type_create_subarray((PetscMPIInt)(da->dim + 1), gsizes, lsizes, lstarts, MPI_ORDER_FORTRAN, MPIU_SCALAR, &view));
   PetscCallMPI(MPI_Type_commit(&view));
 
   PetscCall(PetscViewerBinaryGetMPIIODescriptor(viewer, &mfdes));
@@ -763,7 +767,7 @@ static PetscErrorCode VecLoad_HDF5_DA(Vec xin, PetscViewer viewer)
   int               dim, rdim;
   hsize_t           dims[6] = {0}, count[6] = {0}, offset[6] = {0};
   PetscBool         dim2 = PETSC_FALSE, timestepping = PETSC_FALSE;
-  PetscInt          dimension, timestep              = PETSC_MIN_INT, dofInd;
+  PetscInt          dimension, timestep              = PETSC_INT_MIN, dofInd;
   PetscScalar      *x;
   const char       *vecname;
   hid_t             filespace; /* file dataspace identifier */
@@ -808,7 +812,7 @@ static PetscErrorCode VecLoad_HDF5_DA(Vec xin, PetscViewer viewer)
   #endif
 
   /* The expected number of dimensions, assuming basedimension2 = false */
-  dim = dimension;
+  dim = (int)dimension;
   if (dd->w > 1) ++dim;
   if (timestep >= 0) ++dim;
   #if defined(PETSC_USE_COMPLEX)

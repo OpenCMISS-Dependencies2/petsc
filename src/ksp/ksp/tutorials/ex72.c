@@ -48,7 +48,7 @@ int main(int argc, char **args)
   char        mtype[PETSC_MAX_PATH_LEN];
 
   PetscFunctionBeginUser;
-  PetscCall(PetscInitialize(&argc, &args, (char *)0, help));
+  PetscCall(PetscInitialize(&argc, &args, NULL, help));
   PetscCallMPI(MPI_Comm_rank(PETSC_COMM_WORLD, &rank));
   PetscCall(PetscOptionsGetBool(NULL, NULL, "-table", &table, NULL));
   PetscCall(PetscOptionsGetBool(NULL, NULL, "-constantnullspace", &constantnullspace, NULL));
@@ -180,7 +180,7 @@ int main(int argc, char **args)
   PetscCall(VecGetSize(b, &m));
   PetscCall(VecGetLocalSize(b, &p));
   preload = (PetscBool)(M != m || p != n); /* Global or local dimension mismatch */
-  PetscCall(MPIU_Allreduce(&preload, &flg, 1, MPIU_BOOL, MPI_LOR, PetscObjectComm((PetscObject)A)));
+  PetscCallMPI(MPIU_Allreduce(&preload, &flg, 1, MPIU_BOOL, MPI_LOR, PetscObjectComm((PetscObject)A)));
   if (flg) { /* Create a new vector b by padding the old one */
     PetscInt     j, mvec, start, end, indx;
     Vec          tmp;
@@ -394,8 +394,8 @@ int main(int argc, char **args)
       PetscCall(PetscViewerDestroy(&viewer));
     } else {
       PetscCall(PetscPrintf(PETSC_COMM_WORLD, "Number of iterations = %3" PetscInt_FMT "\n", its));
-      if (!PetscIsNanScalar(norm)) {
-        if (norm < 1.e-12 && !PetscIsNanScalar((PetscScalar)norm)) {
+      if (!PetscIsNanReal(norm)) {
+        if (norm < 1.e-12) {
           PetscCall(PetscPrintf(PETSC_COMM_WORLD, "  Residual norm < 1.e-12\n"));
         } else {
           PetscCall(PetscPrintf(PETSC_COMM_WORLD, "Residual norm %g\n", (double)norm));
@@ -597,6 +597,10 @@ int main(int argc, char **args)
          suffix: 18
          requires: hypre !defined(PETSC_HAVE_HYPRE_DEVICE)
          args: -pc_type hypre -pc_hypre_type euclid
+      test:
+         suffix: 20
+         requires: hypre !defined(PETSC_HAVE_HYPRE_DEVICE)
+         args: -pc_type hypre -pc_hypre_type ilu
 
    testset:
       suffix: 19
@@ -766,12 +770,12 @@ int main(int argc, char **args)
       requires: datafilespath double !defined(PETSC_USE_64BIT_INDICES) pastix
       output_file: output/ex72_mumps.out
       nsize: {{1 2}}
-      args: -f0 ${DATAFILESPATH}/matrices/small -ksp_type preonly -pc_factor_mat_solver_type pastix -num_numfac 2 -num_rhs 2 -pc_type cholesky -mat_type sbaij -mat_ignore_lower_triangular
+      args: -f0 ${DATAFILESPATH}/matrices/small -ksp_type preonly -pc_factor_mat_solver_type pastix -num_numfac 2 -num_rhs 2 -pc_type cholesky -mat_type sbaij -mat_ignore_lower_triangular -mat_pastix_thread_nbr 1
 
    testset:
       suffix: pastix_lu
       requires: datafilespath double !defined(PETSC_USE_64BIT_INDICES) pastix
-      args: -f0 ${DATAFILESPATH}/matrices/small -ksp_type preonly -pc_type lu -pc_factor_mat_solver_type pastix -num_numfac 2 -num_rhs 2
+      args: -f0 ${DATAFILESPATH}/matrices/small -ksp_type preonly -pc_type lu -pc_factor_mat_solver_type pastix -num_numfac 2 -num_rhs 2 -mat_pastix_thread_nbr 1
       output_file: output/ex72_mumps.out
       test:
          args: -mat_type seqaij
@@ -784,7 +788,7 @@ int main(int argc, char **args)
       output_file: output/ex72_mumps_redundant.out
       nsize: 8
       requires: datafilespath double !defined(PETSC_USE_64BIT_INDICES) pastix
-      args: -f0 ${DATAFILESPATH}/matrices/medium -ksp_type preonly -pc_type redundant -pc_redundant_number {{8 7 6 5 4 3 2 1}} -redundant_pc_factor_mat_solver_type pastix -num_numfac 2 -num_rhs 2
+      args: -f0 ${DATAFILESPATH}/matrices/medium -ksp_type preonly -pc_type redundant -pc_redundant_number {{8 7 6 5 4 3 2 1}} -redundant_pc_factor_mat_solver_type pastix -num_numfac 2 -num_rhs 2 -mat_pastix_thread_nbr 1
 
    testset:
       suffix: superlu_dist_lu

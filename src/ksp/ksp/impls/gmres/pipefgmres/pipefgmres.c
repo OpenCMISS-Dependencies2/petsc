@@ -28,16 +28,16 @@ static PetscErrorCode KSPSetUp_PIPEFGMRES(KSP ksp)
   PetscFunctionBegin;
   PetscCall(KSPSetUp_GMRES(ksp));
 
-  PetscCall(PetscMalloc1((VEC_OFFSET + max_k), &pipefgmres->prevecs));
-  PetscCall(PetscMalloc1((VEC_OFFSET + max_k), &pipefgmres->prevecs_user_work));
+  PetscCall(PetscMalloc1(VEC_OFFSET + max_k, &pipefgmres->prevecs));
+  PetscCall(PetscMalloc1(VEC_OFFSET + max_k, &pipefgmres->prevecs_user_work));
 
   PetscCall(KSPCreateVecs(ksp, pipefgmres->vv_allocated, &pipefgmres->prevecs_user_work[0], 0, NULL));
   for (k = 0; k < pipefgmres->vv_allocated; k++) pipefgmres->prevecs[k] = pipefgmres->prevecs_user_work[0][k];
 
-  PetscCall(PetscMalloc1((VEC_OFFSET + max_k), &pipefgmres->zvecs));
-  PetscCall(PetscMalloc1((VEC_OFFSET + max_k), &pipefgmres->zvecs_user_work));
+  PetscCall(PetscMalloc1(VEC_OFFSET + max_k, &pipefgmres->zvecs));
+  PetscCall(PetscMalloc1(VEC_OFFSET + max_k, &pipefgmres->zvecs_user_work));
 
-  PetscCall(PetscMalloc1((VEC_OFFSET + max_k), &pipefgmres->redux));
+  PetscCall(PetscMalloc1(VEC_OFFSET + max_k, &pipefgmres->redux));
 
   PetscCall(KSPCreateVecs(ksp, pipefgmres->vv_allocated, &pipefgmres->zvecs_user_work[0], 0, NULL));
   for (k = 0; k < pipefgmres->vv_allocated; k++) pipefgmres->zvecs[k] = pipefgmres->zvecs_user_work[0][k];
@@ -181,7 +181,7 @@ static PetscErrorCode KSPPIPEFGMRESCycle(PetscInt *itcount, KSP ksp)
 
     /* Compute the norm of the un-normalized new direction using the rearranged formula
        Note that these are shifted ("barred") quantities */
-    for (k = 0; k <= loc_it; k++) tt -= ((PetscReal)(PetscAbsScalar(lhh[k]) * PetscAbsScalar(lhh[k])));
+    for (k = 0; k <= loc_it; k++) tt -= PetscAbsScalar(lhh[k]) * PetscAbsScalar(lhh[k]);
     /* On AVX512 this is accumulating roundoff errors for eg: tt=-2.22045e-16 */
     if ((tt < 0.0) && tt > -PETSC_SMALL) tt = 0.0;
     if (tt < 0.0) {
@@ -290,7 +290,8 @@ static PetscErrorCode KSPPIPEFGMRESCycle(PetscInt *itcount, KSP ksp)
   /*
      Monitor if we know that we will not return for a restart
   */
-  if (loc_it && (ksp->reason || ksp->its >= ksp->max_it)) {
+  if (ksp->reason == KSP_CONVERGED_ITERATING && ksp->its >= ksp->max_it) ksp->reason = KSP_DIVERGED_ITS;
+  if (loc_it && ksp->reason) {
     PetscCall(KSPMonitor(ksp, ksp->its, ksp->rnorm));
     PetscCall(KSPLogResidualHistory(ksp, ksp->rnorm));
   }

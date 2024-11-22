@@ -338,7 +338,7 @@ PetscErrorCode FVRHSFunction_2WaySplit(TS ts, PetscReal time, Vec X, Vec F, void
   PetscCall(DMDAVecRestoreArray(da, F, &f));
   PetscCall(DMDARestoreArray(da, PETSC_TRUE, &slope));
   PetscCall(DMRestoreLocalVector(da, &Xloc));
-  PetscCall(MPIU_Allreduce(&cfl_idt, &ctx->cfl_idt, 1, MPIU_SCALAR, MPIU_MAX, PetscObjectComm((PetscObject)da)));
+  PetscCallMPI(MPIU_Allreduce(&cfl_idt, &ctx->cfl_idt, 1, MPIU_SCALAR, MPIU_MAX, PetscObjectComm((PetscObject)da)));
   if (0) {
     /* We need to a way to inform the TS of a CFL constraint, this is a debugging fragment */
     PetscReal dt, tnow;
@@ -346,7 +346,7 @@ PetscErrorCode FVRHSFunction_2WaySplit(TS ts, PetscReal time, Vec X, Vec F, void
     PetscCall(TSGetTime(ts, &tnow));
     if (dt > 0.5 / ctx->cfl_idt) {
       if (1) {
-        PetscCall(PetscPrintf(ctx->comm, "Stability constraint exceeded at t=%g, dt %g > %g\n", (double)tnow, (double)dt, (double)(0.5 / ctx->cfl_idt)));
+        PetscCall(PetscPrintf(ctx->comm, "Stability constraint exceeded at t=%g, dt %g > %g\n", (double)tnow, (double)dt, (double)(1 / (2 * ctx->cfl_idt))));
       } else SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_UNKNOWN_TYPE, "Stability constraint exceeded, %g > %g", (double)dt, (double)(ctx->cfl / ctx->cfl_idt));
     }
   }
@@ -477,7 +477,7 @@ PetscErrorCode FVRHSFunctionslow_2WaySplit(TS ts, PetscReal time, Vec X, Vec F, 
   PetscCall(VecRestoreArray(F, &f));
   PetscCall(DMDARestoreArray(da, PETSC_TRUE, &slope));
   PetscCall(DMRestoreLocalVector(da, &Xloc));
-  PetscCall(MPIU_Allreduce(&cfl_idt, &ctx->cfl_idt, 1, MPIU_SCALAR, MPIU_MAX, PetscObjectComm((PetscObject)da)));
+  PetscCallMPI(MPIU_Allreduce(&cfl_idt, &ctx->cfl_idt, 1, MPIU_SCALAR, MPIU_MAX, PetscObjectComm((PetscObject)da)));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -905,10 +905,10 @@ int main(int argc, char *argv[])
     PetscCall(DMDAVecRestoreArrayRead(da, X0, (void *)&ptr_X0));
     PetscCall(DMDAVecRestoreArrayRead(da, X, (void *)&ptr_X));
     mass_difference = mass_final - mass_initial;
-    PetscCall(MPIU_Allreduce(&mass_difference, &mass_differenceg, 1, MPIU_SCALAR, MPIU_SUM, comm));
+    PetscCallMPI(MPIU_Allreduce(&mass_difference, &mass_differenceg, 1, MPIU_SCALAR, MPIU_SUM, comm));
     PetscCall(PetscPrintf(comm, "Mass difference %g\n", (double)mass_differenceg));
     PetscCall(PetscPrintf(comm, "Final time %g, steps %" PetscInt_FMT "\n", (double)ptime, steps));
-    PetscCall(PetscPrintf(comm, "Maximum allowable stepsize according to CFL %g\n", (double)(1.0 / ctx.cfl_idt)));
+    PetscCall(PetscPrintf(comm, "Maximum allowable stepsize according to CFL %g\n", (double)(1 / ctx.cfl_idt)));
     if (ctx.exact) {
       PetscReal nrm1 = 0;
       PetscCall(SolutionErrorNorms_2WaySplit(&ctx, da, ptime, X, &nrm1));

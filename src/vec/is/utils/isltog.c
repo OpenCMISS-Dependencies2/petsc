@@ -136,7 +136,7 @@ static PetscErrorCode ISGlobalToLocalMappingSetUp(ISLocalToGlobalMapping mapping
   PetscFunctionBegin;
   if (mapping->data) PetscFunctionReturn(PETSC_SUCCESS);
   end   = 0;
-  start = PETSC_MAX_INT;
+  start = PETSC_INT_MAX;
 
   for (i = 0; i < n; i++) {
     if (idx[i] < 0) continue;
@@ -755,7 +755,7 @@ PetscErrorCode ISLocalToGlobalMappingSetFromOptions(ISLocalToGlobalMapping mappi
   PetscValidHeaderSpecific(mapping, IS_LTOGM_CLASSID, 1);
   PetscCall(ISLocalToGlobalMappingRegisterAll());
   PetscObjectOptionsBegin((PetscObject)mapping);
-  PetscCall(PetscOptionsFList("-islocaltoglobalmapping_type", "ISLocalToGlobalMapping method", "ISLocalToGlobalMappingSetType", ISLocalToGlobalMappingList, (char *)(((PetscObject)mapping)->type_name) ? ((PetscObject)mapping)->type_name : defaulttype, type, 256, &flg));
+  PetscCall(PetscOptionsFList("-islocaltoglobalmapping_type", "ISLocalToGlobalMapping method", "ISLocalToGlobalMappingSetType", ISLocalToGlobalMappingList, ((PetscObject)mapping)->type_name ? ((PetscObject)mapping)->type_name : defaulttype, type, 256, &flg));
   if (flg) PetscCall(ISLocalToGlobalMappingSetType(mapping, type));
   PetscOptionsEnd();
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -1239,7 +1239,7 @@ static PetscErrorCode ISLocalToGlobalMappingSetUpBlockInfo_Private(ISLocalToGlob
 
   /* Create layout for global indices */
   for (i = 0, m = 0; i < nleaves; i++) m = PetscMax(m, gidxs[i]);
-  PetscCall(MPIU_Allreduce(MPI_IN_PLACE, &m, 1, MPIU_INT, MPI_MAX, comm));
+  PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &m, 1, MPIU_INT, MPI_MAX, comm));
   PetscCall(PetscLayoutCreate(comm, &layout));
   PetscCall(PetscLayoutSetSize(layout, m + 1));
   PetscCall(PetscLayoutSetUp(layout));
@@ -1282,7 +1282,7 @@ static PetscErrorCode ISLocalToGlobalMappingSetUpBlockInfo_Private(ISLocalToGlob
 
   /* gather ranks at multi roots */
   for (i = 0; i < mnroots; i++) mrootdata[i] = -1;
-  for (i = 0; i < nleaves; i++) leafdata[i] = (PetscInt)rank;
+  for (i = 0; i < nleaves; i++) leafdata[i] = rank;
 
   PetscCall(PetscSFGatherBegin(sf, MPIU_INT, leafdata, mrootdata));
   PetscCall(PetscSFGatherEnd(sf, MPIU_INT, leafdata, mrootdata));

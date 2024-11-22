@@ -82,9 +82,8 @@ PetscErrorCode PetscViewersGetViewer(PetscViewers viewers, PetscInt n, PetscView
   PetscCheck(n >= 0, PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Cannot access using a negative index - %" PetscInt_FMT, n);
   if (n >= viewers->n) {
     PetscViewer *v;
-    int          newn = n + 64; /* add 64 new ones at a time */
 
-    PetscCall(PetscCalloc1(newn, &v));
+    PetscCall(PetscCalloc1(n + 64, &v));
     PetscCall(PetscArraycpy(v, viewers->viewer, viewers->n));
     PetscCall(PetscFree(viewers->viewer));
 
@@ -103,26 +102,26 @@ PetscErrorCode PetscViewersGetViewer(PetscViewers viewers, PetscInt n, PetscView
   Input Parameters:
 + nmon      - The new monitor
 . nmctx     - The new monitor context, or `NULL`
-. nmdestroy - The new monitor destroy function, or `NULL`
+. nmdestroy - The new monitor context destroy function, or `NULL`, see `PetscCtxDestroyFn` for its calling sequence
 . mon       - The old monitor
 . mctx      - The old monitor context, or `NULL`
-- mdestroy  - The old monitor destroy function, or `NULL`
+- mdestroy  - The old monitor context destroy function, or `NULL`, see `PetscCtxDestroyFn` for its calling sequence
 
   Output Parameter:
 . identical - `PETSC_TRUE` if the monitors are the same
 
   Level: developer
 
-.seealso: [](sec_viewers), `DMMonitorSetFromOptions()`, `KSPMonitorSetFromOptions()`, `SNESMonitorSetFromOptions()`
+.seealso: [](sec_viewers), `DMMonitorSetFromOptions()`, `KSPMonitorSetFromOptions()`, `SNESMonitorSetFromOptions()`, `PetscCtxDestroyFn`
 @*/
-PetscErrorCode PetscMonitorCompare(PetscErrorCode (*nmon)(void), void *nmctx, PetscErrorCode (*nmdestroy)(void **), PetscErrorCode (*mon)(void), void *mctx, PetscErrorCode (*mdestroy)(void **), PetscBool *identical)
+PetscErrorCode PetscMonitorCompare(PetscErrorCode (*nmon)(void), void *nmctx, PetscCtxDestroyFn *nmdestroy, PetscErrorCode (*mon)(void), void *mctx, PetscCtxDestroyFn *mdestroy, PetscBool *identical)
 {
   PetscFunctionBegin;
   PetscAssertPointer(identical, 7);
   *identical = PETSC_FALSE;
   if (nmon == mon && nmdestroy == mdestroy) {
     if (nmctx == mctx) *identical = PETSC_TRUE;
-    else if (nmdestroy == (PetscErrorCode(*)(void **))PetscViewerAndFormatDestroy) {
+    else if (nmdestroy == (PetscCtxDestroyFn *)PetscViewerAndFormatDestroy) {
       PetscViewerAndFormat *old = (PetscViewerAndFormat *)mctx, *newo = (PetscViewerAndFormat *)nmctx;
       if (old->viewer == newo->viewer && old->format == newo->format) *identical = PETSC_TRUE;
     }

@@ -1013,6 +1013,10 @@ struct /* __attribute__((packed, aligned(alignof(PetscInt *)))) */ petsc_mpiu_2i
   PetscInt a;
   PetscInt b;
 };
+struct __attribute__((packed)) petsc_mpiu_int_mpiint {
+  PetscInt    a;
+  PetscMPIInt b;
+};
 /*
  static_assert(sizeof(struct petsc_mpiu_2int) == 2 * sizeof(PetscInt), "");
  static_assert(alignof(struct petsc_mpiu_2int) == alignof(PetscInt *), "");
@@ -1023,8 +1027,10 @@ struct /* __attribute__((packed, aligned(alignof(PetscInt *)))) */ petsc_mpiu_2i
  pass! So we just comment it out...
 */
 PETSC_EXTERN MPI_Datatype MPIU_2INT /* PETSC_ATTRIBUTE_MPI_TYPE_TAG_LAYOUT_COMPATIBLE(struct petsc_mpiu_2int) */;
+PETSC_EXTERN MPI_Datatype MPIU_INT_MPIINT /* PETSC_ATTRIBUTE_MPI_TYPE_TAG_LAYOUT_COMPATIBLE(struct petsc_mpiu_int_mpiint) */;
 #else
-  #define MPIU_2INT MPI_2INT
+  #define MPIU_2INT       MPI_2INT
+  #define MPIU_INT_MPIINT MPI_2INT
 #endif
 PETSC_EXTERN MPI_Datatype MPI_4INT;
 PETSC_EXTERN MPI_Datatype MPIU_4INT;
@@ -1153,12 +1159,8 @@ M*/
 M*/
 #define PetscApproximateGTE(x, b) ((x) >= (PetscRealConstant(b) - PETSC_SMALL))
 
-/*MC
+/*@C
    PetscCeilInt - Returns the ceiling of the quotation of two positive integers
-
-   Synopsis:
-   #include <petscmath.h>
-   PetscInt PetscCeilInt(PetscInt x,PetscInt y)
 
    Not Collective
 
@@ -1173,10 +1175,34 @@ M*/
   PetscInt n = PetscCeilInt(10, 3); // n has the value of 4
 .ve
 
-.seealso: `PetscMax()`, `PetscMin()`, `PetscAbsInt()`, `PetscAbsReal()`, `PetscApproximateLTE()`
-M*/
-#define PetscCeilInt(x, y) ((((PetscInt)(x)) / ((PetscInt)(y))) + ((((PetscInt)(x)) % ((PetscInt)(y))) ? 1 : 0))
+.seealso: `PetscCeilInt64()`, `PetscMax()`, `PetscMin()`, `PetscAbsInt()`, `PetscAbsReal()`, `PetscApproximateLTE()`
+@*/
+static inline PetscInt PetscCeilInt(PetscInt x, PetscInt y)
+{
+  return x / y + (x % y ? 1 : 0);
+}
 
-#define PetscCeilInt64(x, y) ((((PetscInt64)(x)) / ((PetscInt64)(y))) + ((((PetscInt64)(x)) % ((PetscInt64)(y))) ? 1 : 0))
+/*@C
+   PetscCeilInt64 - Returns the ceiling of the quotation of two positive integers
+
+   Not Collective
+
+   Input Parameters:
++   x - the numerator
+-   y - the denominator
+
+   Level: advanced
+
+  Example\:
+.vb
+  PetscInt64 n = PetscCeilInt64(10, 3); // n has the value of 4
+.ve
+
+.seealso: `PetscCeilInt()`, `PetscMax()`, `PetscMin()`, `PetscAbsInt()`, `PetscAbsReal()`, `PetscApproximateLTE()`
+@*/
+static inline PetscInt64 PetscCeilInt64(PetscInt64 x, PetscInt64 y)
+{
+  return x / y + (x % y ? 1 : 0);
+}
 
 PETSC_EXTERN PetscErrorCode PetscLinearRegression(PetscInt, const PetscReal[], const PetscReal[], PetscReal *, PetscReal *);

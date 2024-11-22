@@ -18,7 +18,7 @@
 - sp - separator character
 
   Output Parameters:
-+ argc - the number of entries in the array
++ argc - the number of entries in `args`
 - args - an array of the entries with a `NULL` at the end
 
   Level: intermediate
@@ -29,17 +29,17 @@
   Developer Notes:
   Uses raw `malloc()` and does not call error handlers since this may be used before PETSc is initialized.
 
-  Used to generate argc, args arguments passed to `MPI_Init()`
+  Used to generate `argc`, `args` arguments passed to `MPI_Init()`
 
 .seealso: `PetscStrToArrayDestroy()`, `PetscToken`, `PetscTokenCreate()`
 @*/
 PetscErrorCode PetscStrToArray(const char s[], char sp, int *argc, char ***args)
 {
-  int       i, j, n, *lens, cnt = 0;
+  int       n, i, j, *lens, cnt = 0;
   PetscBool flg = PETSC_FALSE;
 
   if (!s) n = 0;
-  else n = strlen(s);
+  else n = (int)strlen(s);
   *argc = 0;
   *args = NULL;
   for (; n > 0; n--) { /* remove separator chars at the end - and will empty the string if all chars are separator chars */
@@ -59,7 +59,7 @@ PetscErrorCode PetscStrToArray(const char s[], char sp, int *argc, char ***args)
   }
   (*args) = (char **)malloc(((*argc) + 1) * sizeof(char *));
   if (!*args) return PETSC_ERR_MEM;
-  lens = (int *)malloc((*argc) * sizeof(int));
+  lens = (int *)malloc(((*argc) + 1) * sizeof(int));
   if (!lens) return PETSC_ERR_MEM;
   for (i = 0; i < *argc; i++) lens[i] = 0;
 
@@ -550,7 +550,7 @@ PetscErrorCode PetscStrreplace(MPI_Comm comm, const char aa[], char b[], size_t 
   PetscFunctionBegin;
   PetscAssertPointer(aa, 2);
   PetscAssertPointer(b, 3);
-  if (aa == b) PetscCall(PetscStrallocpy(aa, (char **)&a));
+  if (aa == b) PetscCall(PetscStrallocpy(aa, &a));
   PetscCall(PetscMalloc1(len, &work));
 
   /* get values for replaced variables */
@@ -599,7 +599,7 @@ PetscErrorCode PetscStrreplace(MPI_Comm comm, const char aa[], char b[], size_t 
   }
   i = 0;
   while (r[i]) {
-    tfree = (char *)r[i];
+    tfree = r[i];
     PetscCall(PetscFree(tfree));
     i++;
   }

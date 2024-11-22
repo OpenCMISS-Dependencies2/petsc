@@ -26,7 +26,7 @@ static PetscErrorCode KSPLGMRESBuildSoln(PetscScalar *, Vec, Vec, KSP, PetscInt)
 PetscErrorCode KSPLGMRESSetAugDim(KSP ksp, PetscInt dim)
 {
   PetscFunctionBegin;
-  PetscTryMethod((ksp), "KSPLGMRESSetAugDim_C", (KSP, PetscInt), (ksp, dim));
+  PetscTryMethod(ksp, "KSPLGMRESSetAugDim_C", (KSP, PetscInt), (ksp, dim));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -52,7 +52,7 @@ PetscErrorCode KSPLGMRESSetAugDim(KSP ksp, PetscInt dim)
 PetscErrorCode KSPLGMRESSetConstant(KSP ksp)
 {
   PetscFunctionBegin;
-  PetscTryMethod((ksp), "KSPLGMRESSetConstant_C", (KSP), (ksp));
+  PetscTryMethod(ksp, "KSPLGMRESSetConstant_C", (KSP), (ksp));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -244,7 +244,8 @@ static PetscErrorCode KSPLGMRESCycle(PetscInt *itcount, KSP ksp)
   PetscCall(KSPLGMRESBuildSoln(GRS(0), ksp->vec_sol, ksp->vec_sol, ksp, loc_it - 1));
 
   /* Monitor if we know that we will not return for a restart */
-  if (ksp->reason || ksp->its >= max_it) PetscCall(KSPMonitor(ksp, ksp->its, res));
+  if (ksp->reason == KSP_CONVERGED_ITERATING && ksp->its >= ksp->max_it) ksp->reason = KSP_DIVERGED_ITS;
+  if (ksp->reason) PetscCall(KSPMonitor(ksp, ksp->its, res));
 
   /* LGMRES_MOD collect aug vector and A*augvector for future restarts -
      only if we will be restarting (i.e. this cycle performed it_total iterations)  */

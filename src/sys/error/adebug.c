@@ -235,7 +235,7 @@ PetscErrorCode PetscAttachDebugger(void)
     return PETSC_ERR_SYS;
   }
   if (PetscUnlikely(!isatty(fileno(stdin))) && !UseDebugTerminal) { printf("If the debugger exits immediately or hangs, this indicates you cannot use PetscAttachDebugger() in this situation\n\n"); }
-  child = (int)fork();
+  child = fork();
   if (PetscUnlikely(child < 0)) {
     ierr = (*PetscErrorPrintf)("PetscAttachDebugger: Error in fork() prior to attaching debugger\n");
     return PETSC_ERR_SYS;
@@ -247,7 +247,7 @@ PetscErrorCode PetscAttachDebugger(void)
     in the debugger goes to the correct process.
   */
   #if !defined(PETSC_DO_NOT_SWAP_CHILD_FOR_DEBUGGER)
-  child = child ? 0 : (int)getppid();
+  child = child ? 0 : getppid();
   #endif
 
   if (child) { /* I am the parent, will run the debugger */
@@ -507,19 +507,16 @@ PetscErrorCode PetscAttachDebugger(void)
 @*/
 PetscErrorCode PetscAttachDebuggerErrorHandler(MPI_Comm comm, int line, const char *fun, const char *file, PetscErrorCode num, PetscErrorType p, const char *mess, void *ctx)
 {
-  PetscErrorCode ierr;
-
   (void)comm;
   (void)num;
   (void)p;
   (void)ctx;
   if (!mess) mess = " ";
 
-  if (fun) ierr = (*PetscErrorPrintf)("%s() at %s:%d %s\n", fun, file, line, mess);
-  else ierr = (*PetscErrorPrintf)("%s:%d %s\n", file, line, mess);
+  if (fun) (void)(*PetscErrorPrintf)("%s() at %s:%d %s\n", fun, file, line, mess);
+  else (void)(*PetscErrorPrintf)("%s:%d %s\n", file, line, mess);
 
-  ierr = PetscAttachDebugger();
-  (void)ierr;
+  (void)PetscAttachDebugger();
   abort(); /* call abort because don't want to kill other MPI ranks that may successfully attach to debugger */
   PetscFunctionReturn(PETSC_SUCCESS);
 }

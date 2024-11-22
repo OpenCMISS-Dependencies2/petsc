@@ -60,7 +60,7 @@ PetscErrorCode MatGetMultiProcBlock_MPIAIJ(Mat mat, MPI_Comm subComm, MatReuse s
     PetscCall(PetscObjectReference((PetscObject)aij->A));
   } else if (((Mat_MPIAIJ *)(*subMat)->data)->A != aij->A) {
     PetscObject obj = (PetscObject)((Mat_MPIAIJ *)((*subMat)->data))->A;
-    PetscCall(PetscObjectReference((PetscObject)obj));
+    PetscCall(PetscObjectReference(obj));
     ((Mat_MPIAIJ *)((*subMat)->data))->A = aij->A;
     PetscCall(PetscObjectReference((PetscObject)aij->A));
   }
@@ -76,7 +76,7 @@ PetscErrorCode MatGetMultiProcBlock_MPIAIJ(Mat mat, MPI_Comm subComm, MatReuse s
       newCol = garrayCMap[aijB->j[j]];
       if (newCol) {
         newCol--; /* remove the increment */
-        PetscCall(MatSetValues_MPIAIJ(*subMat, 1, &newRow, 1, &newCol, (aijB->a + j), INSERT_VALUES));
+        PetscCall(MatSetValues_MPIAIJ(*subMat, 1, &newRow, 1, &newCol, aijB->a + j, INSERT_VALUES));
       }
     }
   }

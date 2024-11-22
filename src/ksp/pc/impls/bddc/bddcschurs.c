@@ -437,7 +437,7 @@ PetscErrorCode PCBDDCSubSchursSetUp(PCBDDCSubSchurs sub_schurs, Mat Ain, Mat Sin
     else {
       print_schurs = PETSC_FALSE;
       for (i = 0; i < nr; i++)
-        if (print_schurs_ranks[i] == (PetscInt)rank) {
+        if (print_schurs_ranks[i] == rank) {
           print_schurs = PETSC_TRUE;
           break;
         }
@@ -625,10 +625,10 @@ PetscErrorCode PCBDDCSubSchursSetUp(PCBDDCSubSchurs sub_schurs, Mat Ain, Mat Sin
     PetscCall(PetscFPTrapPush(PETSC_FP_TRAP_OFF));
     if (use_sytr) {
       PetscCallBLAS("LAPACKsytrf", LAPACKsytrf_("L", &B_N, &dummyscalar, &B_N, &dummyint, &lwork, &B_lwork, &B_ierr));
-      PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in query to SYTRF Lapack routine %d", (int)B_ierr);
+      PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in query to SYTRF Lapack routine %" PetscBLASInt_FMT, B_ierr);
     } else {
       PetscCallBLAS("LAPACKgetri", LAPACKgetri_(&B_N, &dummyscalar, &B_N, &dummyint, &lwork, &B_lwork, &B_ierr));
-      PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in query to GETRI Lapack routine %d", (int)B_ierr);
+      PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in query to GETRI Lapack routine %" PetscBLASInt_FMT, B_ierr);
     }
     PetscCall(PetscFPTrapPop());
     PetscCall(PetscBLASIntCast((PetscInt)PetscRealPart(lwork), &B_lwork));
@@ -806,7 +806,7 @@ PetscErrorCode PCBDDCSubSchursSetUp(PCBDDCSubSchurs sub_schurs, Mat Ain, Mat Sin
         PetscCall(ISGetSize(is_I, &n_internal));
         if (!n_internal) { /* UMFPACK gives error with 0 sized problems */
           MatSolverType solver = NULL;
-          PetscCall(PCFactorGetMatSolverType(origpc, (MatSolverType *)&solver));
+          PetscCall(PCFactorGetMatSolverType(origpc, &solver));
           if (solver) PetscCall(PCFactorSetMatSolverType(schurpc, solver));
         }
         PetscCall(KSPSetUp(schurksp));
@@ -1451,7 +1451,7 @@ PetscErrorCode PCBDDCSubSchursSetUp(PCBDDCSubSchurs sub_schurs, Mat Ain, Mat Sin
     if (sub_schurs->sum_S_Ej_inv_all) PetscCall(MatSeqAIJRestoreArray(sub_schurs->sum_S_Ej_inv_all, &SEjinv_arr));
     if (solver_S) PetscCall(MatFactorRestoreSchurComplement(F, &S_all, MAT_FACTOR_SCHUR_UNFACTORED));
 
-      /* may prevent from unneeded copies, since MUMPS or MKL_Pardiso always use CPU memory
+    /* may prevent from unneeded copies, since MUMPS or MKL_Pardiso always use CPU memory
        however, preliminary tests indicate using GPUs is still faster in the solve phase */
 #if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA)
     if (reuse_solvers) {
@@ -1558,19 +1558,19 @@ PetscErrorCode PCBDDCSubSchursSetUp(PCBDDCSubSchurs sub_schurs, Mat Ain, Mat Sin
           PetscCall(PetscFPTrapPush(PETSC_FP_TRAP_OFF));
           if (use_potr) {
             PetscCallBLAS("LAPACKpotrf", LAPACKpotrf_("L", &B_N, S_data, &B_N, &B_ierr));
-            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in POTRF Lapack routine %d", (int)B_ierr);
+            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in POTRF Lapack routine %" PetscBLASInt_FMT, B_ierr);
             PetscCallBLAS("LAPACKpotri", LAPACKpotri_("L", &B_N, S_data, &B_N, &B_ierr));
-            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in POTRI Lapack routine %d", (int)B_ierr);
+            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in POTRI Lapack routine %" PetscBLASInt_FMT, B_ierr);
           } else if (use_sytr) {
             PetscCallBLAS("LAPACKsytrf", LAPACKsytrf_("L", &B_N, S_data, &B_N, pivots, Bwork, &B_lwork, &B_ierr));
-            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in SYTRF Lapack routine %d", (int)B_ierr);
+            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in SYTRF Lapack routine %" PetscBLASInt_FMT, B_ierr);
             PetscCallBLAS("LAPACKsytri", LAPACKsytri_("L", &B_N, S_data, &B_N, pivots, Bwork, &B_ierr));
-            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in SYTRI Lapack routine %d", (int)B_ierr);
+            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in SYTRI Lapack routine %" PetscBLASInt_FMT, B_ierr);
           } else {
             PetscCallBLAS("LAPACKgetrf", LAPACKgetrf_(&B_N, &B_N, S_data, &B_N, pivots, &B_ierr));
-            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in GETRF Lapack routine %d", (int)B_ierr);
+            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in GETRF Lapack routine %" PetscBLASInt_FMT, B_ierr);
             PetscCallBLAS("LAPACKgetri", LAPACKgetri_(&B_N, S_data, &B_N, pivots, Bwork, &B_lwork, &B_ierr));
-            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in GETRI Lapack routine %d", (int)B_ierr);
+            PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in GETRI Lapack routine %" PetscBLASInt_FMT, B_ierr);
           }
           PetscCall(PetscLogFlops(1.0 * size_schur * size_schur * size_schur));
           PetscCall(PetscFPTrapPop());
@@ -1612,7 +1612,7 @@ PetscErrorCode PCBDDCSubSchursSetUp(PCBDDCSubSchurs sub_schurs, Mat Ain, Mat Sin
             PetscCall(KSPMatSolve(pS_II, S_IE, tX));
             PetscCall(KSPDestroy(&pS_II));
 
-            PetscCall(MatTransposeMatMult(S_IE, tX, MAT_REUSE_MATRIX, PETSC_DEFAULT, &SEj));
+            PetscCall(MatTransposeMatMult(S_IE, tX, MAT_REUSE_MATRIX, PETSC_DETERMINE, &SEj));
             PetscCall(MatDestroy(&S_IE));
             PetscCall(MatDestroy(&tX));
             PetscCall(MatAYPX(SEj, -1, S_EE, SAME_NONZERO_PATTERN));
@@ -1825,19 +1825,19 @@ PetscErrorCode PCBDDCSubSchursSetUp(PCBDDCSubSchurs sub_schurs, Mat Ain, Mat Sin
         PetscCall(PetscFPTrapPush(PETSC_FP_TRAP_OFF));
         if (use_potr) {
           PetscCallBLAS("LAPACKpotrf", LAPACKpotrf_("L", &B_N, array + cum, &B_N, &B_ierr));
-          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in POTRF Lapack routine %d", (int)B_ierr);
+          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in POTRF Lapack routine %" PetscBLASInt_FMT, B_ierr);
           PetscCallBLAS("LAPACKpotri", LAPACKpotri_("L", &B_N, array + cum, &B_N, &B_ierr));
-          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in POTRI Lapack routine %d", (int)B_ierr);
+          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in POTRI Lapack routine %" PetscBLASInt_FMT, B_ierr);
         } else if (use_sytr) {
           PetscCallBLAS("LAPACKsytrf", LAPACKsytrf_("L", &B_N, array + cum, &B_N, pivots, Bwork, &B_lwork, &B_ierr));
-          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in SYTRF Lapack routine %d", (int)B_ierr);
+          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in SYTRF Lapack routine %" PetscBLASInt_FMT, B_ierr);
           PetscCallBLAS("LAPACKsytri", LAPACKsytri_("L", &B_N, array + cum, &B_N, pivots, Bwork, &B_ierr));
-          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in SYTRI Lapack routine %d", (int)B_ierr);
+          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in SYTRI Lapack routine %" PetscBLASInt_FMT, B_ierr);
         } else {
           PetscCallBLAS("LAPACKgetrf", LAPACKgetrf_(&B_N, &B_N, array + cum, &B_N, pivots, &B_ierr));
-          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in GETRF Lapack routine %d", (int)B_ierr);
+          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in GETRF Lapack routine %" PetscBLASInt_FMT, B_ierr);
           PetscCallBLAS("LAPACKgetri", LAPACKgetri_(&B_N, array + cum, &B_N, pivots, Bwork, &B_lwork, &B_ierr));
-          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in GETRI Lapack routine %d", (int)B_ierr);
+          PetscCheck(!B_ierr, PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in GETRI Lapack routine %" PetscBLASInt_FMT, B_ierr);
         }
         PetscCall(PetscLogFlops(1.0 * subset_size * subset_size * subset_size));
         PetscCall(PetscFPTrapPop());

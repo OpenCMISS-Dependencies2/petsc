@@ -32,7 +32,7 @@ static PetscErrorCode PetscPythonFindLibraryName(const char pythonexe[], const c
   PetscCall(PetscStrlcat(command, attempt, sizeof(command)));
 #if defined(PETSC_HAVE_POPEN)
   PetscCall(PetscPOpen(PETSC_COMM_SELF, NULL, command, "r", &fp));
-  PetscCheck(fgets(pythonlib, pl, fp), PETSC_COMM_SELF, PETSC_ERR_PLIB, "Python: bad output from executable: %s, running: %s", pythonexe, command);
+  PetscCheck(fgets(pythonlib, (int)pl, fp), PETSC_COMM_SELF, PETSC_ERR_PLIB, "Python: bad output from executable: %s, running: %s", pythonexe, command);
   PetscCall(PetscPClose(PETSC_COMM_SELF, fp));
 #else
   SETERRQ(PETSC_COMM_SELF, PETSC_ERR_LIB, "Python: Aborted due to missing popen()");
@@ -218,13 +218,14 @@ PetscErrorCode PetscPythonInitialize(const char pyexe[], const char pylib[])
     /* add PETSC_LIB_DIR in front of 'sys.path' */
     sys_path = PySys_GetObject("path");
     if (sys_path) {
+      int zero = 0;
       PetscCall(PetscStrreplace(PETSC_COMM_SELF, "${PETSC_LIB_DIR}", path, sizeof(path)));
-      Py_DecRef(PyObject_CallMethod(sys_path, "insert", "is", (int)0, (char *)path));
+      Py_DecRef(PyObject_CallMethod(sys_path, "insert", "is", zero, (char *)path));
 #if defined(PETSC_PETSC4PY_INSTALL_PATH)
       {
         char *rpath;
         PetscCall(PetscStrallocpy(PETSC_PETSC4PY_INSTALL_PATH, &rpath));
-        Py_DecRef(PyObject_CallMethod(sys_path, "insert", "is", (int)0, rpath));
+        Py_DecRef(PyObject_CallMethod(sys_path, "insert", "is", zero, rpath));
         PetscCall(PetscFree(rpath));
       }
 #endif

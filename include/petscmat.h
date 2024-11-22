@@ -177,6 +177,7 @@ typedef const char *MatSolverType;
 #define MATSOLVERHIP          "hip"
 #define MATSOLVERKOKKOS       "kokkos"
 #define MATSOLVERSPQR         "spqr"
+#define MATSOLVERHTOOL        "htool"
 
 /*E
     MatFactorType - indicates what type of factorization is requested
@@ -284,9 +285,7 @@ typedef const char *MatProductAlgorithm;
 #define MATPRODUCTALGORITHMALLATONCEMERGED "allatonce_merged"
 #define MATPRODUCTALGORITHMALLGATHERV      "allgatherv"
 #define MATPRODUCTALGORITHMCYCLIC          "cyclic"
-#if defined(PETSC_HAVE_HYPRE)
-  #define MATPRODUCTALGORITHMHYPRE "hypre"
-#endif
+#define MATPRODUCTALGORITHMHYPRE           "hypre"
 
 PETSC_EXTERN PetscErrorCode MatProductCreate(Mat, Mat, Mat, Mat *);
 PETSC_EXTERN PetscErrorCode MatProductCreateWithMat(Mat, Mat, Mat, Mat);
@@ -533,6 +532,7 @@ PETSC_EXTERN PetscErrorCode MatPythonGetType(Mat, const char *[]);
 PETSC_EXTERN PetscErrorCode MatPythonCreate(MPI_Comm, PetscInt, PetscInt, PetscInt, PetscInt, const char[], Mat *);
 
 PETSC_EXTERN PetscErrorCode MatResetPreallocation(Mat);
+PETSC_EXTERN PetscErrorCode MatResetHash(Mat);
 PETSC_EXTERN PetscErrorCode MatSetUp(Mat);
 PETSC_EXTERN PetscErrorCode MatDestroy(Mat *);
 PETSC_EXTERN PetscErrorCode MatGetNonzeroState(Mat, PetscObjectState *);
@@ -954,6 +954,7 @@ PETSC_EXTERN PetscErrorCode MatFindZeroDiagonals(Mat, IS *);
 PETSC_EXTERN PetscErrorCode MatFindOffBlockDiagonalEntries(Mat, IS *);
 PETSC_EXTERN PetscErrorCode MatCreateMPIMatConcatenateSeqMat(MPI_Comm, Mat, PetscInt, MatReuse, Mat *);
 
+PETSC_EXTERN PetscErrorCode MatCopyHashToXAIJ(Mat A, Mat B);
 /*@C
    MatSetValue - Set a single entry into a matrix.
 
@@ -2027,10 +2028,13 @@ typedef enum {
   MATOP_GET_VALUES_LOCAL      = 147,
   MATOP_CREATE_GRAPH          = 148,
   /* MATOP_PLACEHOLDER_149=149, */
-  MATOP_TRANSPOSE_SYMBOLIC = 150,
-  MATOP_ELIMINATE_ZEROS    = 151,
-  MATOP_GET_ROW_SUM_ABS    = 152,
-  MATOP_GET_FACTOR         = 153
+  MATOP_TRANSPOSE_SYMBOLIC  = 150,
+  MATOP_ELIMINATE_ZEROS     = 151,
+  MATOP_GET_ROW_SUM_ABS     = 152,
+  MATOP_GET_FACTOR          = 153,
+  MATOP_GET_BLOCK_DIAGONAL  = 154, // NOTE: caller of the two op functions owns the returned matrix
+  MATOP_GET_VBLOCK_DIAGONAL = 155, // and need to destroy it after use.
+  MATOP_COPY_HASH_TO_AIJ    = 156
 } MatOperation;
 PETSC_EXTERN PetscErrorCode MatSetOperation(Mat, MatOperation, void (*)(void));
 PETSC_EXTERN PetscErrorCode MatGetOperation(Mat, MatOperation, void (**)(void));
@@ -2043,7 +2047,7 @@ PETSC_DEPRECATED_FUNCTION(3, 14, 0, "MatProductClear()", ) static inline PetscEr
 PETSC_EXTERN PetscErrorCode MatShellSetOperation(Mat, MatOperation, void (*)(void));
 PETSC_EXTERN PetscErrorCode MatShellGetOperation(Mat, MatOperation, void (**)(void));
 PETSC_EXTERN PetscErrorCode MatShellSetContext(Mat, void *);
-PETSC_EXTERN PetscErrorCode MatShellSetContextDestroy(Mat, PetscErrorCode (*)(void *));
+PETSC_EXTERN PetscErrorCode MatShellSetContextDestroy(Mat, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode MatShellSetVecType(Mat, VecType);
 PETSC_EXTERN PetscErrorCode MatShellTestMult(Mat, PetscErrorCode (*)(void *, Vec, Vec), Vec, void *, PetscBool *);
 PETSC_EXTERN PetscErrorCode MatShellTestMultTranspose(Mat, PetscErrorCode (*)(void *, Vec, Vec), Vec, void *, PetscBool *);

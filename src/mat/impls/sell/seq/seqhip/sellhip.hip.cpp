@@ -106,6 +106,7 @@ static __global__ void matmultadd_seqsell_basic_kernel(PetscInt nrows, PetscInt 
 }
 
 #if !defined(PETSC_USE_COMPLEX)
+PETSC_PRAGMA_DIAGNOSTIC_IGNORED_BEGIN("-Wpass-failed")
 /* use 1 block per slice, suitable for large slice width */
 template <int BLOCKY>
 __global__ void matmult_seqsell_tiled_kernel9(PetscInt nrows, PetscInt sliceheight, const PetscInt *acolidx, const MatScalar *aval, const PetscInt *sliidx, const PetscScalar *x, PetscScalar *y)
@@ -204,7 +205,7 @@ __global__ void matmult_seqsell_tiled_kernel8(PetscInt nrows, PetscInt sliceheig
       if ((cid + 1) * BLOCKY * WARP_SIZE > sliidx[start_slice + 1]) { /* this iteration covers more than one slice */
         __shared__ PetscInt flag[BLOCKY * 2];
         bool                write;
-        PetscInt            slice_id = start_slice, totalslices = PetscCeilInt(nrows, sliceheight), totalentries = sliidx[totalslices];
+        PetscInt            slice_id = start_slice, totalslices = PetscCeilIntMacro(nrows, sliceheight), totalentries = sliidx[totalslices];
         /* find out the slice that this element belongs to */
         while (gid < totalentries && gid >= sliidx[slice_id + 1]) slice_id++;
         if (threadIdx.x % (WARP_SIZE / 2) == 0) flag[threadIdx.y * 2 + threadIdx.x / (WARP_SIZE / 2)] = slice_id;
@@ -259,7 +260,7 @@ __global__ void matmultadd_seqsell_tiled_kernel8(PetscInt nrows, PetscInt sliceh
       if ((cid + 1) * BLOCKY * WARP_SIZE > sliidx[start_slice + 1]) { /* this iteration covers more than one slice */
         __shared__ PetscInt flag[BLOCKY * 2];
         bool                write;
-        PetscInt            slice_id = start_slice, totalslices = PetscCeilInt(nrows, sliceheight), totalentries = sliidx[totalslices];
+        PetscInt            slice_id = start_slice, totalslices = PetscCeilIntMacro(nrows, sliceheight), totalentries = sliidx[totalslices];
         /* find out the slice that this element belongs to */
         while (gid < totalentries && gid >= sliidx[slice_id + 1]) slice_id++;
         if (threadIdx.x % (WARP_SIZE / 2) == 0) flag[threadIdx.y * 2 + threadIdx.x / (WARP_SIZE / 2)] = slice_id;
@@ -322,6 +323,7 @@ static __global__ void matmultadd_seqsell_tiled_kernel7(PetscInt nrows, PetscInt
   for (int offset = WARP_SIZE / 2; offset >= sliceheight; offset /= 2) { t += __shfl_down(t, offset); }
   if (row < nrows && threadIdx.x < sliceheight) { z[row] = y[row] + t; }
 }
+PETSC_PRAGMA_DIAGNOSTIC_IGNORED_END()
 #endif
 
 /***********  Kernel 2-6 require a slice height smaller than 512, 256, 128, 64, 32, espectively. They are kept only for performance comparison  **********/

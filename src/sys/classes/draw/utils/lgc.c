@@ -161,15 +161,14 @@ PetscErrorCode PetscDrawLGCreate(PetscDraw draw, PetscInt dim, PetscDrawLG *outl
   lg->view    = NULL;
   lg->destroy = NULL;
   lg->nopts   = 0;
-  lg->dim     = dim;
   lg->xmin    = 1.e20;
   lg->ymin    = 1.e20;
   lg->xmax    = -1.e20;
   lg->ymax    = -1.e20;
-
+  PetscCall(PetscCIntCast(dim, &lg->dim));
   PetscCall(PetscMalloc2(dim * PETSC_DRAW_LG_CHUNK_SIZE, &lg->x, dim * PETSC_DRAW_LG_CHUNK_SIZE, &lg->y));
 
-  lg->len         = dim * PETSC_DRAW_LG_CHUNK_SIZE;
+  lg->len         = lg->dim * PETSC_DRAW_LG_CHUNK_SIZE;
   lg->loc         = 0;
   lg->use_markers = PETSC_FALSE;
 
@@ -291,9 +290,9 @@ PetscErrorCode PetscDrawLGSetDimension(PetscDrawLG lg, PetscInt dim)
     PetscCall(PetscFree(lg->legend));
   }
   PetscCall(PetscFree(lg->colors));
-  lg->dim = dim;
+  PetscCall(PetscCIntCast(dim, &lg->dim));
   PetscCall(PetscMalloc2(dim * PETSC_DRAW_LG_CHUNK_SIZE, &lg->x, dim * PETSC_DRAW_LG_CHUNK_SIZE, &lg->y));
-  lg->len = dim * PETSC_DRAW_LG_CHUNK_SIZE;
+  lg->len = lg->dim * PETSC_DRAW_LG_CHUNK_SIZE;
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -464,6 +463,7 @@ PetscErrorCode PetscDrawLGDraw(PetscDrawLG lg)
     int       i, dim = lg->dim, cl;
     PetscReal xl, yl, xr, yr, tw, th;
     size_t    slen, len = 0;
+
     PetscCall(PetscDrawAxisGetLimits(lg->axis, &xl, &xr, &yl, &yr));
     PetscCall(PetscDrawStringGetSize(draw, &tw, &th));
     for (i = 0; i < dim; i++) {
@@ -472,10 +472,10 @@ PetscErrorCode PetscDrawLGDraw(PetscDrawLG lg)
     }
     if (right) {
       xr = xr - 1.5 * tw;
-      xl = xr - (len + 7) * tw;
+      xl = xr - ((PetscReal)len + 7) * tw;
     } else {
       xl = xl + 1.5 * tw;
-      xr = xl + (len + 7) * tw;
+      xr = xl + ((PetscReal)len + 7) * tw;
     }
     yr = yr - 1.0 * th;
     yl = yr - (dim + 1) * th;

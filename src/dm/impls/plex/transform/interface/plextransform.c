@@ -1,3 +1,9 @@
+#include "petsc/private/petscimpl.h"
+#include "petscdmplex.h"
+#include "petscdmplextransform.h"
+#include "petscdmplextransformtypes.h"
+#include "petscerror.h"
+#include "petscsystypes.h"
 #include <petsc/private/dmplextransformimpl.h> /*I "petscdmplextransform.h" I*/
 
 #include <petsc/private/petscfeimpl.h> /* For PetscFEInterpolate_Static() */
@@ -315,9 +321,11 @@ PetscErrorCode DMPlexTransformView(DMPlexTransform tr, PetscViewer v)
 . tr - the `DMPlexTransform` object to set options for
 
   Options Database Keys:
-+ -dm_plex_transform_type                    - Set the transform type, e.g. refine_regular
-. -dm_plex_transform_label_match_strata      - Only label points of the same stratum as the producing point
-- -dm_plex_transform_label_replica_inc <inc> - Increment for the label value to be multiplied by the replica number, so that the new label value is oldValue + r * inc
++ -dm_plex_transform_type                      - Set the transform type, e.g. refine_regular
+. -dm_plex_transform_label_match_strata        - Only label points of the same stratum as the producing point
+. -dm_plex_transform_label_replica_inc <inc>   - Increment for the label value to be multiplied by the replica number, so that the new label value is oldValue + r * inc
+. -dm_plex_transform_active <name>             - Name for active mesh label
+- -dm_plex_transform_active_values <v0,v1,...> - Values in the active label
 
   Level: intermediate
 
@@ -325,9 +333,9 @@ PetscErrorCode DMPlexTransformView(DMPlexTransform tr, PetscViewer v)
 @*/
 PetscErrorCode DMPlexTransformSetFromOptions(DMPlexTransform tr)
 {
-  char        typeName[1024];
+  char        typeName[1024], active[PETSC_MAX_PATH_LEN];
   const char *defName = DMPLEXREFINEREGULAR;
-  PetscBool   flg;
+  PetscBool   flg, match;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(tr, DMPLEXTRANSFORM_CLASSID, 1);
@@ -335,8 +343,36 @@ PetscErrorCode DMPlexTransformSetFromOptions(DMPlexTransform tr)
   PetscCall(PetscOptionsFList("-dm_plex_transform_type", "DMPlexTransform", "DMPlexTransformSetType", DMPlexTransformList, defName, typeName, 1024, &flg));
   if (flg) PetscCall(DMPlexTransformSetType(tr, typeName));
   else if (!((PetscObject)tr)->type_name) PetscCall(DMPlexTransformSetType(tr, defName));
-  PetscCall(PetscOptionsBool("-dm_plex_transform_label_match_strata", "Only label points of the same stratum as the producing point", "", tr->labelMatchStrata, &tr->labelMatchStrata, NULL));
+  PetscCall(PetscOptionsBool("-dm_plex_transform_label_match_strata", "Only label points of the same stratum as the producing point", "", tr->labelMatchStrata, &match, &flg));
+  if (flg) PetscCall(DMPlexTransformSetMatchStrata(tr, match));
   PetscCall(PetscOptionsInt("-dm_plex_transform_label_replica_inc", "Increment for the label value to be multiplied by the replica number", "", tr->labelReplicaInc, &tr->labelReplicaInc, NULL));
+  PetscCall(PetscOptionsString("-dm_plex_transform_active", "Name for active mesh label", "DMPlexTransformSetActive", active, active, sizeof(active), &flg));
+  if (flg) {
+    DM       dm;
+    DMLabel  label;
+    PetscInt values[16];
+    PetscInt n = 16;
+
+    PetscCall(DMPlexTransformGetDM(tr, &dm));
+    PetscCall(DMGetLabel(dm, active, &label));
+    PetscCall(PetscOptionsIntArray("-dm_plex_transform_active_values", "The label values to be active", "DMPlexTransformSetActive", values, &n, &flg));
+    if (flg && n) {
+      DMLabel newlabel;
+
+      PetscCall(DMLabelCreate(PETSC_COMM_SELF, "Active", &newlabel));
+      for (PetscInt i = 0; i < n; ++i) {
+        IS is;
+
+        PetscCall(DMLabelGetStratumIS(label, values[i], &is));
+        PetscCall(DMLabelInsertIS(newlabel, is, values[i]));
+        PetscCall(ISDestroy(&is));
+      }
+      PetscCall(DMPlexTransformSetActive(tr, newlabel));
+      PetscCall(DMLabelDestroy(&newlabel));
+    } else {
+      PetscCall(DMPlexTransformSetActive(tr, label));
+    }
+  }
   PetscTryTypeMethod(tr, setfromoptions, PetscOptionsObject);
   /* process any options handlers added with PetscObjectAddOptionsHandler() */
   PetscCall(PetscObjectProcessOptionsHandlers((PetscObject)tr, PetscOptionsObject));
@@ -542,7 +578,11 @@ PetscErrorCode DMPlexTransformSetUp(DMPlexTransform tr)
   PetscCall(DMSetSnapToGeomModel(dm, NULL));
   PetscCall(DMPlexGetChart(dm, &pStart, &pEnd));
   if (pEnd > pStart) {
-    PetscCall(DMPlexGetCellType(dm, 0, &ctCell));
+    // Ignore cells hanging off of embedded surfaces
+    PetscInt c = pStart;
+
+    ctCell = DM_POLYTOPE_FV_GHOST;
+    while (DMPolytopeTypeGetDim(ctCell) < 0) PetscCall(DMPlexGetCellType(dm, c++, &ctCell));
   } else {
     PetscInt dim;
 
@@ -615,7 +655,7 @@ PetscErrorCode DMPlexTransformSetUp(DMPlexTransform tr)
     if (tr->ctStartNew[tr->ctOrderNew[c + 1]] > tr->ctStartNew[tr->ctOrderNew[c]]) tr->depth = PetscMax(tr->depth, DMPolytopeTypeGetDim((DMPolytopeType)tr->ctOrderNew[c]));
   PetscCall(PetscMalloc2(tr->depth + 1, &tr->depthStart, tr->depth + 1, &tr->depthEnd));
   for (PetscInt d = 0; d <= tr->depth; ++d) {
-    tr->depthStart[d] = PETSC_MAX_INT;
+    tr->depthStart[d] = PETSC_INT_MAX;
     tr->depthEnd[d]   = -1;
   }
   for (c = 0; c < DM_NUM_POLYTOPES; ++c) {
@@ -848,6 +888,51 @@ PetscErrorCode DMPlexTransformGetDepthStratum(DMPlexTransform tr, PetscInt depth
 }
 
 /*@
+  DMPlexTransformGetMatchStrata - Get the flag which determines what points get added to the transformed labels
+
+  Not Collective
+
+  Input Parameter:
+. tr - The `DMPlexTransform`
+
+  Output Parameter:
+. match - If `PETSC_TRUE`, only add produced points at the same stratum as the original point to new labels
+
+  Level: intermediate
+
+.seealso: [](ch_unstructured), `DM`, `DMPLEX`, `DMPlexTransform`, `DMPlexTransformSetMatchStrata()`, `DMPlexGetPointDepth()`
+@*/
+PetscErrorCode DMPlexTransformGetMatchStrata(DMPlexTransform tr, PetscBool *match)
+{
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(tr, DMPLEXTRANSFORM_CLASSID, 1);
+  PetscAssertPointer(match, 2);
+  *match = tr->labelMatchStrata;
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+/*@
+  DMPlexTransformSetMatchStrata - Set the flag which determines what points get added to the transformed labels
+
+  Not Collective
+
+  Input Parameters:
++ tr    - The `DMPlexTransform`
+- match - If `PETSC_TRUE`, only add produced points at the same stratum as the original point to new labels
+
+  Level: intermediate
+
+.seealso: [](ch_unstructured), `DM`, `DMPLEX`, `DMPlexTransform`, `DMPlexTransformGetMatchStrata()`, `DMPlexGetPointDepth()`
+@*/
+PetscErrorCode DMPlexTransformSetMatchStrata(DMPlexTransform tr, PetscBool match)
+{
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(tr, DMPLEXTRANSFORM_CLASSID, 1);
+  tr->labelMatchStrata = match;
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+/*@
   DMPlexTransformGetTargetPoint - Get the number of a point in the transformed mesh based on information from the original mesh.
 
   Not Collective
@@ -1020,7 +1105,7 @@ PetscErrorCode DMPlexTransformGetSourcePoint(DMPlexTransform tr, PetscInt pNew, 
   pO = rp + ctS;
   PetscCheck(!(pO < ctS) && !(pO >= ctE), PETSC_COMM_SELF, PETSC_ERR_PLIB, "Source point %" PetscInt_FMT " is not a %s [%" PetscInt_FMT ", %" PetscInt_FMT ")", pO, DMPolytopeTypes[ctO], ctS, ctE);
   if (ct) *ct = (DMPolytopeType)ctO;
-  if (ctNew) *ctNew = (DMPolytopeType)ctN;
+  if (ctNew) *ctNew = ctN;
   if (p) *p = pO;
   if (r) *r = rO;
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -1299,7 +1384,7 @@ PetscErrorCode DMPlexTransformGetConeSize(DMPlexTransform tr, PetscInt q, PetscI
   PetscValidHeaderSpecific(tr, DMPLEXTRANSFORM_CLASSID, 1);
   PetscAssertPointer(coneSize, 3);
   PetscCall(DMPlexTransformGetCellType(tr, q, &ctNew));
-  *coneSize = DMPolytopeTypeGetConeSize((DMPolytopeType)ctNew);
+  *coneSize = DMPolytopeTypeGetConeSize(ctNew);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -1507,7 +1592,7 @@ static PetscErrorCode DMPlexTransformCreateCellVertices_Internal(DMPlexTransform
     const PetscScalar   *coords;
     DMPolytopeType      *rct;
     PetscInt            *rsize, *rcone, *rornt;
-    PetscInt             Nct, n, r, pNew;
+    PetscInt             Nct, n, r, pNew = 0;
     PetscInt             trdim, vStart, vEnd, Nc;
     const PetscInt       debug = 0;
     const char          *typeName;
@@ -1994,6 +2079,8 @@ static PetscErrorCode DMPlexTransformSetCoordinates(DMPlexTransform tr, DM rdm)
   PetscInt           dE, dEo, d, cStart, cEnd, c, cStartNew, cEndNew, vStartNew, vEndNew, v, pStart, pEnd, p;
 
   PetscFunctionBegin;
+  // Need to clear the DMField for coordinates
+  PetscCall(DMSetCoordinateField(rdm, NULL));
   PetscCall(DMPlexTransformGetDM(tr, &dm));
   PetscCall(DMGetCoordinateDM(dm, &cdm));
   PetscCall(DMGetCellCoordinateDM(dm, &cdmCell));
@@ -2226,6 +2313,11 @@ static PetscErrorCode DMPlexTransformSetCoordinates(DMPlexTransform tr, DM rdm)
 
   Level: intermediate
 
+  Options Database Keys:
++ -dm_plex_transform_label_match_strata      - Only label points of the same stratum as the producing point
+. -dm_plex_transform_label_replica_inc <num> - Increment for the label value to be multiplied by the replica number
+- -dm_plex_transform_active <name>           - Name for active mesh label
+
 .seealso: [](plex_transform_table), [](ch_unstructured), `DM`, `DMPLEX`, `DMPlexTransform`, `DMPlexTransformCreate()`, `DMPlexTransformSetDM()`
 @*/
 PetscErrorCode DMPlexTransformApply(DMPlexTransform tr, DM dm, DM *tdm)
@@ -2278,6 +2370,7 @@ PetscErrorCode DMPlexTransformAdaptLabel(DM dm, PETSC_UNUSED Vec metric, DMLabel
 
   PetscFunctionBegin;
   PetscCall(DMPlexTransformCreate(PetscObjectComm((PetscObject)dm), &tr));
+  PetscCall(PetscObjectSetName((PetscObject)tr, "Adapt Label Transform"));
   PetscCall(PetscObjectGetOptionsPrefix((PetscObject)dm, &prefix));
   PetscCall(PetscObjectSetOptionsPrefix((PetscObject)tr, prefix));
   PetscCall(DMPlexTransformSetDM(tr, dm));

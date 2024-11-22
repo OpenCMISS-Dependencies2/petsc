@@ -53,7 +53,7 @@ PetscErrorCode TSMonitor(TS ts, PetscInt step, PetscReal ptime, Vec u)
 . name         - the monitor type one is seeking
 . help         - message indicating what monitoring is done
 . manual       - manual page for the monitor
-. monitor      - the monitor function
+. monitor      - the monitor function, this must use a `PetscViewerFormat` as its context
 - monitorsetup - a function that is called once ONLY if the user selected this monitor that may set additional features of the `TS` or `PetscViewer` objects
 
   Level: developer
@@ -77,12 +77,14 @@ PetscErrorCode TSMonitorSetFromOptions(TS ts, const char name[], const char help
   if (flg) {
     PetscViewerAndFormat *vf;
     char                  interval_key[1024];
-    PetscCall(PetscViewerAndFormatCreate(viewer, format, &vf));
+
     PetscCall(PetscSNPrintf(interval_key, sizeof interval_key, "%s_interval", name));
+    PetscCall(PetscViewerAndFormatCreate(viewer, format, &vf));
+    vf->view_interval = 1;
     PetscCall(PetscOptionsGetInt(((PetscObject)ts)->options, ((PetscObject)ts)->prefix, interval_key, &vf->view_interval, NULL));
     PetscCall(PetscViewerDestroy(&viewer));
     if (monitorsetup) PetscCall((*monitorsetup)(ts, vf));
-    PetscCall(TSMonitorSet(ts, (PetscErrorCode(*)(TS, PetscInt, PetscReal, Vec, void *))monitor, vf, (PetscErrorCode(*)(void **))PetscViewerAndFormatDestroy));
+    PetscCall(TSMonitorSet(ts, (PetscErrorCode (*)(TS, PetscInt, PetscReal, Vec, void *))monitor, vf, (PetscCtxDestroyFn *)PetscViewerAndFormatDestroy));
   }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -97,7 +99,7 @@ PetscErrorCode TSMonitorSetFromOptions(TS ts, const char name[], const char help
 + ts       - the `TS` context obtained from `TSCreate()`
 . monitor  - monitoring routine
 . mctx     - [optional] user-defined context for private data for the monitor routine (use `NULL` if no context is desired)
-- mdestroy - [optional] routine that frees monitor context (may be `NULL`)
+- mdestroy - [optional] routine that frees monitor context (may be `NULL`), see `PetscCtxDestroyFn` for the calling sequence
 
   Calling sequence of `monitor`:
 + ts    - the `TS` context
@@ -116,9 +118,9 @@ PetscErrorCode TSMonitorSetFromOptions(TS ts, const char name[], const char help
 
 .seealso: [](ch_ts), `TSMonitorDefault()`, `TSMonitorCancel()`, `TSDMSwarmMonitorMoments()`, `TSMonitorExtreme()`, `TSMonitorDrawSolution()`,
           `TSMonitorDrawSolutionPhase()`, `TSMonitorDrawSolutionFunction()`, `TSMonitorDrawError()`, `TSMonitorSolution()`, `TSMonitorSolutionVTK()`,
-          `TSMonitorLGSolution()`, `TSMonitorLGError()`, `TSMonitorSPSwarmSolution()`, `TSMonitorError()`, `TSMonitorEnvelope()`
+          `TSMonitorLGSolution()`, `TSMonitorLGError()`, `TSMonitorSPSwarmSolution()`, `TSMonitorError()`, `TSMonitorEnvelope()`,  `PetscCtxDestroyFn`
 @*/
-PetscErrorCode TSMonitorSet(TS ts, PetscErrorCode (*monitor)(TS ts, PetscInt steps, PetscReal time, Vec u, void *ctx), void *mctx, PetscErrorCode (*mdestroy)(void **))
+PetscErrorCode TSMonitorSet(TS ts, PetscErrorCode (*monitor)(TS ts, PetscInt steps, PetscReal time, Vec u, void *ctx), void *mctx, PetscCtxDestroyFn *mdestroy)
 {
   PetscInt  i;
   PetscBool identical;
@@ -126,13 +128,13 @@ PetscErrorCode TSMonitorSet(TS ts, PetscErrorCode (*monitor)(TS ts, PetscInt ste
   PetscFunctionBegin;
   PetscValidHeaderSpecific(ts, TS_CLASSID, 1);
   for (i = 0; i < ts->numbermonitors; i++) {
-    PetscCall(PetscMonitorCompare((PetscErrorCode(*)(void))monitor, mctx, mdestroy, (PetscErrorCode(*)(void))ts->monitor[i], ts->monitorcontext[i], ts->monitordestroy[i], &identical));
+    PetscCall(PetscMonitorCompare((PetscErrorCode (*)(void))monitor, mctx, mdestroy, (PetscErrorCode (*)(void))ts->monitor[i], ts->monitorcontext[i], ts->monitordestroy[i], &identical));
     if (identical) PetscFunctionReturn(PETSC_SUCCESS);
   }
   PetscCheck(ts->numbermonitors < MAXTSMONITORS, PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Too many monitors set");
   ts->monitor[ts->numbermonitors]          = monitor;
   ts->monitordestroy[ts->numbermonitors]   = mdestroy;
-  ts->monitorcontext[ts->numbermonitors++] = (void *)mctx;
+  ts->monitorcontext[ts->numbermonitors++] = mctx;
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -386,7 +388,7 @@ PetscErrorCode TSMonitorLGTimeStep(TS ts, PetscInt step, PetscReal ptime, Vec v,
 PetscErrorCode TSMonitorLGCtxDestroy(TSMonitorLGCtx *ctx)
 {
   PetscFunctionBegin;
-  if ((*ctx)->transformdestroy) PetscCall(((*ctx)->transformdestroy)((*ctx)->transformctx));
+  if ((*ctx)->transformdestroy) PetscCall(((*ctx)->transformdestroy)((void **)&(*ctx)->transformctx));
   PetscCall(PetscDrawLGDestroy(&(*ctx)->lg));
   PetscCall(PetscStrArrayDestroy(&(*ctx)->names));
   PetscCall(PetscStrArrayDestroy(&(*ctx)->displaynames));
@@ -427,15 +429,17 @@ PetscErrorCode TSMonitorSPCtxDestroy(TSMonitorSPCtx *ctx)
 PetscErrorCode TSMonitorHGCtxCreate(MPI_Comm comm, const char host[], const char label[], int x, int y, int m, int n, PetscInt howoften, PetscInt Ns, PetscInt Nb, PetscBool velocity, TSMonitorHGCtx *ctx)
 {
   PetscDraw draw;
-  PetscInt  s;
+  int       Nsi, Nbi;
 
   PetscFunctionBegin;
+  PetscCall(PetscMPIIntCast(Ns, &Nsi));
+  PetscCall(PetscMPIIntCast(Nb, &Nbi));
   PetscCall(PetscNew(ctx));
   PetscCall(PetscMalloc1(Ns, &(*ctx)->hg));
-  for (s = 0; s < Ns; ++s) {
+  for (int s = 0; s < Nsi; ++s) {
     PetscCall(PetscDrawCreate(comm, host, label, x + s * m, y, m, n, &draw));
     PetscCall(PetscDrawSetFromOptions(draw));
-    PetscCall(PetscDrawHGCreate(draw, Nb, &(*ctx)->hg[s]));
+    PetscCall(PetscDrawHGCreate(draw, Nbi, &(*ctx)->hg[s]));
     PetscCall(PetscDrawHGCalcStats((*ctx)->hg[s], PETSC_TRUE));
     PetscCall(PetscDrawDestroy(&draw));
   }
@@ -511,7 +515,7 @@ PetscErrorCode TSMonitorDrawSolution(TS ts, PetscInt step, PetscReal ptime, Vec 
     char      time[32];
 
     PetscCall(PetscViewerDrawGetDraw(ictx->viewer, 0, &draw));
-    PetscCall(PetscSNPrintf(time, 32, "Timestep %d Time %g", (int)step, (double)ptime));
+    PetscCall(PetscSNPrintf(time, 32, "Timestep %" PetscInt_FMT " Time %g", step, (double)ptime));
     PetscCall(PetscDrawGetCoordinates(draw, &xl, &yl, &xr, &yr));
     h = yl + .95 * (yr - yl);
     PetscCall(PetscDrawStringCentered(draw, .5 * (xl + xr), h, PETSC_DRAW_BLACK, time));
@@ -577,7 +581,7 @@ PetscErrorCode TSMonitorDrawSolutionPhase(TS ts, PetscInt step, PetscReal ptime,
   PetscCall(PetscDrawPoint(draw, U0, U1, PETSC_DRAW_BLACK));
   if (ictx->showtimestepandtime) {
     PetscCall(PetscDrawGetCoordinates(draw, &xl, &yl, &xr, &yr));
-    PetscCall(PetscSNPrintf(time, 32, "Timestep %d Time %g", (int)step, (double)ptime));
+    PetscCall(PetscSNPrintf(time, 32, "Timestep %" PetscInt_FMT " Time %g", step, (double)ptime));
     h = yl + .95 * (yr - yl);
     PetscCall(PetscDrawStringCentered(draw, .5 * (xl + xr), h, PETSC_DRAW_BLACK, time));
   }
@@ -756,26 +760,27 @@ PetscErrorCode TSMonitorDrawError(TS ts, PetscInt step, PetscReal ptime, Vec u, 
 PetscErrorCode TSMonitorSolution(TS ts, PetscInt step, PetscReal ptime, Vec u, PetscViewerAndFormat *vf)
 {
   PetscFunctionBegin;
-  if (vf->view_interval > 0 && !ts->reason && step % vf->view_interval != 0) PetscFunctionReturn(PETSC_SUCCESS);
-  PetscCall(PetscViewerPushFormat(vf->viewer, vf->format));
-  PetscCall(VecView(u, vf->viewer));
-  PetscCall(PetscViewerPopFormat(vf->viewer));
+  if ((vf->view_interval > 0 && !(step % vf->view_interval)) || (vf->view_interval && ts->reason)) {
+    PetscCall(PetscViewerPushFormat(vf->viewer, vf->format));
+    PetscCall(VecView(u, vf->viewer));
+    PetscCall(PetscViewerPopFormat(vf->viewer));
+  }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 /*@C
-  TSMonitorSolutionVTK - Monitors progress of the `TS` solvers by `VecView()` for the solution at each timestep.
+  TSMonitorSolutionVTK - Monitors progress of the `TS` solvers by `VecView()` for the solution at selected timesteps.
 
   Collective
 
   Input Parameters:
-+ ts               - the `TS` context
-. step             - current time-step
-. ptime            - current time
-. u                - current state
-- filenametemplate - string containing a format specifier for the integer time step (e.g. %03" PetscInt_FMT ")
++ ts    - the `TS` context
+. step  - current time-step
+. ptime - current time
+. u     - current state
+- ctx   - monitor context obtained with `TSMonitorSolutionVTKCtxCreate()`
 
-  Level: intermediate
+  Level: developer
 
   Notes:
   The VTK format does not allow writing multiple time steps in the same file, therefore a different file will be written for each time step.
@@ -786,39 +791,84 @@ PetscErrorCode TSMonitorSolution(TS ts, PetscInt step, PetscReal ptime, Vec u, P
 
 .seealso: [](ch_ts), `TS`, `TSMonitorSet()`, `TSMonitorDefault()`, `VecView()`
 @*/
-PetscErrorCode TSMonitorSolutionVTK(TS ts, PetscInt step, PetscReal ptime, Vec u, void *filenametemplate)
+PetscErrorCode TSMonitorSolutionVTK(TS ts, PetscInt step, PetscReal ptime, Vec u, TSMonitorVTKCtx ctx)
 {
   char        filename[PETSC_MAX_PATH_LEN];
   PetscViewer viewer;
 
   PetscFunctionBegin;
   if (step < 0) PetscFunctionReturn(PETSC_SUCCESS); /* -1 indicates interpolated solution */
-  PetscCall(PetscSNPrintf(filename, sizeof(filename), (const char *)filenametemplate, step));
-  PetscCall(PetscViewerVTKOpen(PetscObjectComm((PetscObject)ts), filename, FILE_MODE_WRITE, &viewer));
-  PetscCall(VecView(u, viewer));
-  PetscCall(PetscViewerDestroy(&viewer));
+  if (((ctx->interval > 0) && (!(step % ctx->interval))) || (ctx->interval && ts->reason)) {
+    PetscCall(PetscSNPrintf(filename, sizeof(filename), (const char *)ctx->filenametemplate, step));
+    PetscCall(PetscViewerVTKOpen(PetscObjectComm((PetscObject)ts), filename, FILE_MODE_WRITE, &viewer));
+    PetscCall(VecView(u, viewer));
+    PetscCall(PetscViewerDestroy(&viewer));
+  }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 /*@C
-  TSMonitorSolutionVTKDestroy - Destroy filename template string created for use with `TSMonitorSolutionVTK()`
+  TSMonitorSolutionVTKDestroy - Destroy the monitor context created with `TSMonitorSolutionVTKCtxCreate()`
 
   Not Collective
 
   Input Parameter:
-. filenametemplate - string containing a format specifier for the integer time step (e.g. %03" PetscInt_FMT ")
+. ctx - the monitor context
 
-  Level: intermediate
+  Level: developer
 
   Note:
   This function is normally passed to `TSMonitorSet()` along with `TSMonitorSolutionVTK()`.
 
 .seealso: [](ch_ts), `TSMonitorSet()`, `TSMonitorSolutionVTK()`
 @*/
-PetscErrorCode TSMonitorSolutionVTKDestroy(void *filenametemplate)
+PetscErrorCode TSMonitorSolutionVTKDestroy(TSMonitorVTKCtx *ctx)
 {
   PetscFunctionBegin;
-  PetscCall(PetscFree(*(char **)filenametemplate));
+  PetscCall(PetscFree((*ctx)->filenametemplate));
+  PetscCall(PetscFree(*ctx));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+/*@C
+  TSMonitorSolutionVTKCtxCreate - Create the monitor context to be used in `TSMonitorSolutionVTK()`
+
+  Not collective
+
+  Input Parameter:
+. filenametemplate - the template file name, e.g. foo-%03d.vts
+
+  Output Parameter:
+. ctx - the monitor context
+
+  Level: developer
+
+  Note:
+  This function is normally used inside `TSSetFromOptions()` to pass the context created to `TSMonitorSet()` along with `TSMonitorSolutionVTK()`.
+
+.seealso: [](ch_ts), `TSMonitorSet()`, `TSMonitorSolutionVTK()`, `TSMonitorSolutionVTKDestroy()`
+@*/
+PetscErrorCode TSMonitorSolutionVTKCtxCreate(const char *filenametemplate, TSMonitorVTKCtx *ctx)
+{
+  const char     *ptr = NULL, *ptr2 = NULL;
+  TSMonitorVTKCtx ictx;
+
+  PetscFunctionBegin;
+  PetscAssertPointer(filenametemplate, 1);
+  PetscAssertPointer(ctx, 2);
+  /* Do some cursory validation of the input. */
+  PetscCall(PetscStrstr(filenametemplate, "%", (char **)&ptr));
+  PetscCheck(ptr, PETSC_COMM_SELF, PETSC_ERR_USER, "-ts_monitor_solution_vtk requires a file template, e.g. filename-%%03" PetscInt_FMT ".vts");
+  for (ptr++; ptr && *ptr; ptr++) {
+    PetscCall(PetscStrchr("DdiouxX", *ptr, (char **)&ptr2));
+    PetscCheck(ptr2 || (*ptr >= '0' && *ptr <= '9'), PETSC_COMM_SELF, PETSC_ERR_USER, "Invalid file template argument to -ts_monitor_solution_vtk, should look like filename-%%03" PetscInt_FMT ".vts");
+    if (ptr2) break;
+  }
+  PetscCall(PetscNew(&ictx));
+  PetscCall(PetscStrallocpy(filenametemplate, &ictx->filenametemplate));
+  ictx->interval = 1;
+
+  *ctx = ictx;
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -1099,7 +1149,7 @@ PetscErrorCode TSMonitorLGSetDisplayVariables(TS ts, const char *const *displayn
   Input Parameters:
 + ts        - the `TS` context
 . transform - the transform function
-. destroy   - function to destroy the optional context
+. destroy   - function to destroy the optional context, see `PetscCtxDestroyFn` for its calling sequence
 - tctx      - optional context used by transform function
 
   Level: intermediate
@@ -1107,9 +1157,9 @@ PetscErrorCode TSMonitorLGSetDisplayVariables(TS ts, const char *const *displayn
   Note:
   If the `TS` object does not have a `TSMonitorLGCtx` associated with it then this function is ignored
 
-.seealso: [](ch_ts), `TSMonitorSet()`, `TSMonitorDefault()`, `VecView()`, `TSMonitorLGSetVariableNames()`, `TSMonitorLGCtxSetTransform()`
+.seealso: [](ch_ts), `TSMonitorSet()`, `TSMonitorDefault()`, `VecView()`, `TSMonitorLGSetVariableNames()`, `TSMonitorLGCtxSetTransform()`, `PetscCtxDestroyFn`
 @*/
-PetscErrorCode TSMonitorLGSetTransform(TS ts, PetscErrorCode (*transform)(void *, Vec, Vec *), PetscErrorCode (*destroy)(void *), void *tctx)
+PetscErrorCode TSMonitorLGSetTransform(TS ts, PetscErrorCode (*transform)(void *, Vec, Vec *), PetscCtxDestroyFn *destroy, void *tctx)
 {
   PetscInt i;
 
@@ -1128,14 +1178,14 @@ PetscErrorCode TSMonitorLGSetTransform(TS ts, PetscErrorCode (*transform)(void *
   Input Parameters:
 + tctx      - the `TS` context
 . transform - the transform function
-. destroy   - function to destroy the optional context
+. destroy   - function to destroy the optional context, see `PetscCtxDestroyFn` for its calling sequence
 - ctx       - optional context used by transform function
 
   Level: intermediate
 
-.seealso: [](ch_ts), `TS`, `TSMonitorSet()`, `TSMonitorDefault()`, `VecView()`, `TSMonitorLGSetVariableNames()`, `TSMonitorLGSetTransform()`
+.seealso: [](ch_ts), `TS`, `TSMonitorSet()`, `TSMonitorDefault()`, `VecView()`, `TSMonitorLGSetVariableNames()`, `TSMonitorLGSetTransform()`, `PetscCtxDestroyFn`
 @*/
-PetscErrorCode TSMonitorLGCtxSetTransform(TSMonitorLGCtx ctx, PetscErrorCode (*transform)(void *, Vec, Vec *), PetscErrorCode (*destroy)(void *), void *tctx)
+PetscErrorCode TSMonitorLGCtxSetTransform(TSMonitorLGCtx ctx, PetscErrorCode (*transform)(void *, Vec, Vec *), PetscCtxDestroyFn *destroy, void *tctx)
 {
   PetscFunctionBegin;
   ctx->transform        = transform;
@@ -1446,7 +1496,7 @@ PetscErrorCode TSMonitorError(TS ts, PetscInt step, PetscReal ptime, Vec u, Pets
     PetscCall(PetscMalloc2(Nf, &exactFuncs, Nf, &ctxs));
     for (f = 0; f < Nf; ++f) PetscCall(PetscDSGetExactSolution(ds, f, &exactFuncs[f], &ctxs[f]));
     PetscCall(DMComputeL2FieldDiff(dm, ptime, exactFuncs, ctxs, u, ferrors));
-    PetscCall(PetscPrintf(PETSC_COMM_WORLD, "Timestep: %04d time = %-8.4g \t L_2 Error: [", (int)step, (double)ptime));
+    PetscCall(PetscPrintf(PETSC_COMM_WORLD, "Timestep: %04" PetscInt_FMT " time = %-8.4g \t L_2 Error: [", step, (double)ptime));
     for (f = 0; f < Nf; ++f) {
       if (f > 0) PetscCall(PetscPrintf(PETSC_COMM_WORLD, ", "));
       PetscCall(PetscPrintf(PETSC_COMM_WORLD, "%2.3g", (double)ferrors[f]));

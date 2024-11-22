@@ -68,7 +68,7 @@ static PetscErrorCode SNESComputeObjective_DMLocal(SNES snes, Vec X, PetscReal *
   CHKMEMQ;
   PetscCall((*dmlocalsnes->objectivelocal)(dm, Xloc, obj, dmlocalsnes->objectivelocalctx));
   CHKMEMQ;
-  PetscCall(MPIU_Allreduce(MPI_IN_PLACE, obj, 1, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)snes)));
+  PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, obj, 1, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)snes)));
   PetscCall(DMRestoreLocalVector(dm, &Xloc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -111,13 +111,13 @@ static PetscErrorCode SNESComputeFunction_DMLocal(SNES snes, Vec X, Vec F, void 
     PetscInt    it;
 
     PetscCall(SNESGetIterationNumber(snes, &it));
-    PetscCall(PetscSNPrintf(name, PETSC_MAX_PATH_LEN, "Solution, Iterate %d", (int)it));
+    PetscCall(PetscSNPrintf(name, PETSC_MAX_PATH_LEN, "Solution, Iterate %" PetscInt_FMT, it));
     PetscCall(PetscObjectGetName((PetscObject)X, &tmp));
     PetscCall(PetscStrncpy(oldname, tmp, PETSC_MAX_PATH_LEN - 1));
     PetscCall(PetscObjectSetName((PetscObject)X, name));
     PetscCall(VecViewFromOptions(X, (PetscObject)snes, "-dmsnes_solution_vec_view"));
     PetscCall(PetscObjectSetName((PetscObject)X, oldname));
-    PetscCall(PetscSNPrintf(name, PETSC_MAX_PATH_LEN, "Residual, Iterate %d", (int)it));
+    PetscCall(PetscSNPrintf(name, PETSC_MAX_PATH_LEN, "Residual, Iterate %" PetscInt_FMT, it));
     PetscCall(PetscObjectSetName((PetscObject)F, name));
     PetscCall(VecViewFromOptions(F, (PetscObject)snes, "-dmsnes_residual_vec_view"));
   }
@@ -158,7 +158,7 @@ static PetscErrorCode SNESComputeJacobian_DMLocal(SNES snes, Vec X, Mat A, Mat B
       PetscCall(ISColoringDestroy(&coloring));
       switch (dm->coloringtype) {
       case IS_COLORING_GLOBAL:
-        PetscCall(MatFDColoringSetFunction(fdcoloring, (PetscErrorCode(*)(void))SNESComputeFunction_DMLocal, dmlocalsnes));
+        PetscCall(MatFDColoringSetFunction(fdcoloring, (PetscErrorCode (*)(void))SNESComputeFunction_DMLocal, dmlocalsnes));
         break;
       default:
         SETERRQ(PetscObjectComm((PetscObject)snes), PETSC_ERR_SUP, "No support for coloring type '%s'", ISColoringTypes[dm->coloringtype]);

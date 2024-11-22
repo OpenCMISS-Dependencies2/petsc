@@ -43,7 +43,7 @@ struct _TaoOps {
 
 struct _p_Tao {
   PETSCHEADER(struct _TaoOps);
-  void *user;
+  void *ctx; /* user provided context */
   void *user_objP;
   void *user_objgradP;
   void *user_gradP;
@@ -62,7 +62,7 @@ struct _p_Tao {
   void *user_update;
 
   PetscErrorCode (*monitor[MAXTAOMONITORS])(Tao, void *);
-  PetscErrorCode (*monitordestroy[MAXTAOMONITORS])(void **);
+  PetscCtxDestroyFn *monitordestroy[MAXTAOMONITORS];
   void              *monitorcontext[MAXTAOMONITORS];
   PetscInt           numbermonitors;
   void              *cnvP;
@@ -115,8 +115,6 @@ struct _p_Tao {
   PetscReal  cnorm0;
   PetscReal  fc;
 
-  PetscInt max_it;
-  PetscInt max_funcs;
   PetscInt max_constraints;
   PetscInt nfuncs;
   PetscInt ngrads;
@@ -139,30 +137,23 @@ struct _p_Tao {
   TaoLineSearch linesearch;
   PetscBool     lsflag; /* goes up when line search fails */
   KSP           ksp;
-  PetscReal     trust0; /* initial trust region radius */
-  PetscReal     trust;  /* Current trust region */
+  PetscReal     trust; /* Current trust region */
 
   /* EW type forcing term */
   PetscBool ksp_ewconv;
   SNES      snes_ewdummy;
 
-  PetscReal gatol;
-  PetscReal grtol;
-  PetscReal gttol;
-  PetscReal catol;
-  PetscReal crtol;
-  PetscReal steptol;
-  PetscReal fmin;
-  PetscBool max_funcs_changed;
-  PetscBool max_it_changed;
-  PetscBool gatol_changed;
-  PetscBool grtol_changed;
-  PetscBool gttol_changed;
-  PetscBool fmin_changed;
-  PetscBool catol_changed;
-  PetscBool crtol_changed;
-  PetscBool steptol_changed;
-  PetscBool trust0_changed;
+  PetscObjectParameterDeclare(PetscReal, gatol);
+  PetscObjectParameterDeclare(PetscReal, grtol);
+  PetscObjectParameterDeclare(PetscReal, gttol);
+  PetscObjectParameterDeclare(PetscReal, catol);
+  PetscObjectParameterDeclare(PetscReal, crtol);
+  PetscObjectParameterDeclare(PetscReal, steptol);
+  PetscObjectParameterDeclare(PetscReal, fmin);
+  PetscObjectParameterDeclare(PetscInt, max_it);
+  PetscObjectParameterDeclare(PetscInt, max_funcs);
+  PetscObjectParameterDeclare(PetscReal, trust0); /* initial trust region radius */
+
   PetscBool printreason;
   PetscBool viewsolution;
   PetscBool viewgradient;

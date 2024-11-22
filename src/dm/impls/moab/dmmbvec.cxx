@@ -7,13 +7,13 @@
 #define USE_NATIVE_PETSCVEC
 
 /* declare some private DMMoab specific overrides */
-static PetscErrorCode DMCreateVector_Moab_Private(DM dm, moab::Tag tag, const moab::Range *userrange, PetscBool is_global_vec, PetscBool destroy_tag, Vec *vec);
-static PetscErrorCode DMVecUserDestroy_Moab(void *user);
-static PetscErrorCode DMVecDuplicate_Moab(Vec x, Vec *y);
+static PetscErrorCode DMCreateVector_Moab_Private(DM, moab::Tag, const moab::Range *, PetscBool, PetscBool, Vec *);
+static PetscErrorCode DMVecCtxDestroy_Moab(void **);
+static PetscErrorCode DMVecDuplicate_Moab(Vec, Vec *);
 #ifdef MOAB_HAVE_MPI
-static PetscErrorCode DMVecCreateTagName_Moab_Private(moab::Interface *mbiface, moab::ParallelComm *pcomm, char **tag_name);
+static PetscErrorCode DMVecCreateTagName_Moab_Private(moab::Interface *, moab::ParallelComm *, char **);
 #else
-static PetscErrorCode DMVecCreateTagName_Moab_Private(moab::Interface *mbiface, char **tag_name);
+static PetscErrorCode DMVecCreateTagName_Moab_Private(moab::Interface *, char **);
 #endif
 
 /*@C
@@ -424,7 +424,7 @@ static PetscErrorCode DMCreateVector_Moab_Private(DM dm, moab::Tag tag, const mo
 #endif
 
 #ifdef MOAB_HAVE_MPI
-  PetscCall(MPIU_Allreduce(&lnative_vec, &gnative_vec, 1, MPI_INT, MPI_MAX, (((PetscObject)dm)->comm)));
+  PetscCallMPI(MPIU_Allreduce(&lnative_vec, &gnative_vec, 1, MPI_INT, MPI_MAX, ((PetscObject)dm)->comm));
 #else
   gnative_vec = lnative_vec;
 #endif
@@ -477,10 +477,10 @@ static PetscErrorCode DMCreateVector_Moab_Private(DM dm, moab::Tag tag, const mo
     /* Create the PETSc Vector directly and attach our functions accordingly */
     if (!is_global_vec) {
       /* This is an MPI Vector with ghosted padding */
-      PetscCall(VecCreateGhostBlock((((PetscObject)dm)->comm), dmmoab->bs, dmmoab->numFields * dmmoab->nloc, dmmoab->numFields * dmmoab->n, dmmoab->nghost, &dmmoab->gsindices[dmmoab->nloc], vec));
+      PetscCall(VecCreateGhostBlock(((PetscObject)dm)->comm, dmmoab->bs, dmmoab->numFields * dmmoab->nloc, dmmoab->numFields * dmmoab->n, dmmoab->nghost, &dmmoab->gsindices[dmmoab->nloc], vec));
     } else {
       /* This is an MPI/SEQ Vector */
-      PetscCall(VecCreate((((PetscObject)dm)->comm), vec));
+      PetscCall(VecCreate(((PetscObject)dm)->comm, vec));
       PetscCall(VecSetSizes(*vec, dmmoab->numFields * dmmoab->nloc, PETSC_DECIDE));
       PetscCall(VecSetBlockSize(*vec, dmmoab->bs));
       PetscCall(VecSetType(*vec, VECMPI));
@@ -502,22 +502,17 @@ static PetscErrorCode DMCreateVector_Moab_Private(DM dm, moab::Tag tag, const mo
         -> else, create a non-ghosted parallel vector */
     if (!is_global_vec) {
       /* This is an MPI Vector with ghosted padding */
-      PetscCall(VecCreateGhostBlockWithArray((((PetscObject)dm)->comm), dmmoab->bs, dmmoab->numFields * dmmoab->nloc, dmmoab->numFields * dmmoab->n, dmmoab->nghost, &dmmoab->gsindices[dmmoab->nloc], data_ptr, vec));
+      PetscCall(VecCreateGhostBlockWithArray(((PetscObject)dm)->comm, dmmoab->bs, dmmoab->numFields * dmmoab->nloc, dmmoab->numFields * dmmoab->n, dmmoab->nghost, &dmmoab->gsindices[dmmoab->nloc], data_ptr, vec));
     } else {
       /* This is an MPI Vector without ghosted padding */
-      PetscCall(VecCreateMPIWithArray((((PetscObject)dm)->comm), dmmoab->bs, dmmoab->numFields * range->size(), PETSC_DECIDE, data_ptr, vec));
+      PetscCall(VecCreateMPIWithArray(((PetscObject)dm)->comm, dmmoab->bs, dmmoab->numFields * range->size(), PETSC_DECIDE, data_ptr, vec));
     }
   }
   PetscCall(VecSetFromOptions(*vec));
 
   /* create a container and store the internal MOAB data for faster access based on Entities etc */
-  PetscContainer moabdata;
-  PetscCall(PetscContainerCreate(PETSC_COMM_WORLD, &moabdata));
-  PetscCall(PetscContainerSetPointer(moabdata, vmoab));
-  PetscCall(PetscContainerSetUserDestroy(moabdata, DMVecUserDestroy_Moab));
-  PetscCall(PetscObjectCompose((PetscObject)*vec, "MOABData", (PetscObject)moabdata));
+  PetscCall(PetscObjectContainerCompose((PetscObject)*vec, "MOABData", vmoab, DMVecCtxDestroy_Moab));
   (*vec)->ops->duplicate = DMVecDuplicate_Moab;
-  PetscCall(PetscContainerDestroy(&moabdata));
 
   /* Vector created, manually set local to global mapping */
   if (dmmoab->ltog_map) PetscCall(VecSetLocalToGlobalMapping(*vec, dmmoab->ltog_map));
@@ -567,7 +562,7 @@ static PetscErrorCode DMVecCreateTagName_Moab_Private(moab::Interface *mbiface, 
 
 #ifdef MOAB_HAVE_MPI
   /* Make sure that n is consistent across all processes */
-  PetscCall(MPIU_Allreduce(&n, &global_n, 1, MPI_INT, MPI_MAX, pcomm->comm()));
+  PetscCallMPI(MPIU_Allreduce(&n, &global_n, 1, MPI_INT, MPI_MAX, pcomm->comm()));
 #else
   global_n = n;
 #endif
@@ -623,9 +618,9 @@ static PetscErrorCode DMVecDuplicate_Moab(Vec x, Vec *y)
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-static PetscErrorCode DMVecUserDestroy_Moab(void *user)
+static PetscErrorCode DMVecCtxDestroy_Moab(void **user)
 {
-  Vec_MOAB       *vmoab = (Vec_MOAB *)user;
+  Vec_MOAB       *vmoab = (Vec_MOAB *)*user;
   moab::ErrorCode merr;
 
   PetscFunctionBegin;

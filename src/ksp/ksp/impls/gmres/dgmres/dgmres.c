@@ -13,38 +13,38 @@ static PetscErrorCode KSPDGMRESBuildSoln(PetscScalar *, Vec, Vec, KSP, PetscInt)
 static PetscErrorCode KSPDGMRESSetEigen(KSP ksp, PetscInt nb_eig)
 {
   PetscFunctionBegin;
-  PetscTryMethod((ksp), "KSPDGMRESSetEigen_C", (KSP, PetscInt), (ksp, nb_eig));
+  PetscTryMethod(ksp, "KSPDGMRESSetEigen_C", (KSP, PetscInt), (ksp, nb_eig));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 static PetscErrorCode KSPDGMRESSetMaxEigen(KSP ksp, PetscInt max_neig)
 {
   PetscFunctionBegin;
-  PetscTryMethod((ksp), "KSPDGMRESSetMaxEigen_C", (KSP, PetscInt), (ksp, max_neig));
+  PetscTryMethod(ksp, "KSPDGMRESSetMaxEigen_C", (KSP, PetscInt), (ksp, max_neig));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 static PetscErrorCode KSPDGMRESComputeSchurForm(KSP ksp, PetscInt *neig)
 {
   PetscFunctionBegin;
-  PetscUseMethod((ksp), "KSPDGMRESComputeSchurForm_C", (KSP, PetscInt *), (ksp, neig));
+  PetscUseMethod(ksp, "KSPDGMRESComputeSchurForm_C", (KSP, PetscInt *), (ksp, neig));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 PetscErrorCode KSPDGMRESComputeDeflationData(KSP ksp, PetscInt *curneigh)
 {
   PetscFunctionBegin;
-  PetscUseMethod((ksp), "KSPDGMRESComputeDeflationData_C", (KSP, PetscInt *), (ksp, curneigh));
+  PetscUseMethod(ksp, "KSPDGMRESComputeDeflationData_C", (KSP, PetscInt *), (ksp, curneigh));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 static PetscErrorCode KSPDGMRESApplyDeflation(KSP ksp, Vec x, Vec y)
 {
   PetscFunctionBegin;
-  PetscUseMethod((ksp), "KSPDGMRESApplyDeflation_C", (KSP, Vec, Vec), (ksp, x, y));
+  PetscUseMethod(ksp, "KSPDGMRESApplyDeflation_C", (KSP, Vec, Vec), (ksp, x, y));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 static PetscErrorCode KSPDGMRESImproveEig(KSP ksp, PetscInt neig)
 {
   PetscFunctionBegin;
-  PetscUseMethod((ksp), "KSPDGMRESImproveEig_C", (KSP, PetscInt), (ksp, neig));
+  PetscUseMethod(ksp, "KSPDGMRESImproveEig_C", (KSP, PetscInt), (ksp, neig));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -204,7 +204,8 @@ static PetscErrorCode KSPDGMRESCycle(PetscInt *itcount, KSP ksp)
   PetscCall(KSPDGMRESBuildSoln(GRS(0), ksp->vec_sol, ksp->vec_sol, ksp, it - 1));
 
   /* Monitor if we know that we will not return for a restart */
-  if (it && (ksp->reason || ksp->its >= ksp->max_it)) {
+  if (ksp->reason == KSP_CONVERGED_ITERATING && ksp->its >= ksp->max_it) ksp->reason = KSP_DIVERGED_ITS;
+  if (it && ksp->reason) {
     PetscCall(KSPLogResidualHistory(ksp, ksp->rnorm));
     PetscCall(KSPMonitor(ksp, ksp->its, ksp->rnorm));
   }
@@ -626,7 +627,7 @@ PetscErrorCode KSPDGMRESComputeDeflationData_DGMRES(KSP ksp, PetscInt *ExtrNeig)
   {
     PetscBLASInt info;
     PetscCallBLAS("LAPACKgetrf", LAPACKgetrf_(&nr, &nr, TTF, &bmax, INVP, &info));
-    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XGETRF INFO=%d", (int)info);
+    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XGETRF INFO=%" PetscBLASInt_FMT, info);
   }
 
   /* Save X in U and MX in MU for the next cycles and increase the size of the invariant subspace */
@@ -719,7 +720,7 @@ PetscErrorCode KSPDGMRESComputeSchurForm_DGMRES(KSP ksp, PetscInt *neig)
     PetscBLASInt info = 0;
     PetscBLASInt ilo  = 1;
     PetscCallBLAS("LAPACKhseqr", LAPACKhseqr_("S", "I", &bn, &ilo, &ihi, A, &ldA, wr, wi, Q, &ldQ, work, &lwork, &info));
-    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XHSEQR %d", (int)info);
+    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XHSEQR %" PetscBLASInt_FMT, info);
   }
   PetscCall(PetscFree(work));
 
@@ -802,7 +803,7 @@ PetscErrorCode KSPDGMRESApplyDeflation_DGMRES(KSP ksp, Vec x, Vec y)
     PetscBLASInt info;
     PetscBLASInt nrhs = 1;
     PetscCallBLAS("LAPACKgetrs", LAPACKgetrs_("N", &br, &nrhs, TTF, &bmax, INVP, X1, &bmax, &info));
-    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XGETRS %d", (int)info);
+    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XGETRS %" PetscBLASInt_FMT, info);
   }
   /* Iterative refinement -- is it really necessary ?? */
   if (!WORK) {
@@ -814,7 +815,7 @@ PetscErrorCode KSPDGMRESApplyDeflation_DGMRES(KSP ksp, Vec x, Vec y)
     PetscReal    berr, ferr;
     PetscBLASInt nrhs = 1;
     PetscCallBLAS("LAPACKgerfs", LAPACKgerfs_("N", &br, &nrhs, TT, &bmax, TTF, &bmax, INVP, X2, &bmax, X1, &bmax, &ferr, &berr, WORK, IWORK, &info));
-    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XGERFS %d", (int)info);
+    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XGERFS %" PetscBLASInt_FMT, info);
   }
 
   for (i = 0; i < r; i++) X2[i] = X1[i] / lambda - X2[i];
@@ -890,7 +891,7 @@ static PetscErrorCode KSPDGMRESImproveEig_DGMRES(KSP ksp, PetscInt neig)
   {
     PetscBLASInt info = 0;
     PetscCallBLAS("LAPACKgges", LAPACKgges_("V", "V", "N", NULL, &N, AUAU, &ldA, AUU, &ldA, &i, wr, wi, beta, Q, &N, Z, &N, work, &lwork, NULL, &info));
-    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XGGES %d", (int)info);
+    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XGGES %" PetscBLASInt_FMT, info);
   }
   for (i = 0; i < N; i++) {
     if (beta[i] != 0.0) {
@@ -911,7 +912,7 @@ static PetscErrorCode KSPDGMRESImproveEig_DGMRES(KSP ksp, PetscInt neig)
     if (wi[perm[NbrEig]] == 0) NbrEig += 1;
     else NbrEig += 2;
   }
-  if (NbrEig > bmax) NbrEig = bmax - 1;
+  if (NbrEig > bmax) PetscCall(PetscBLASIntCast(bmax - 1, &NbrEig));
   r_old     = r; /* previous size of r */
   dgmres->r = r = NbrEig;
 
@@ -960,7 +961,7 @@ static PetscErrorCode KSPDGMRESImproveEig_DGMRES(KSP ksp, PetscInt neig)
   {
     PetscBLASInt info;
     PetscCallBLAS("LAPACKgetrf", LAPACKgetrf_(&nr, &nr, TTF, &bm, INVP, &info));
-    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XGETRF INFO=%d", (int)info);
+    PetscCheck(!info, PetscObjectComm((PetscObject)ksp), PETSC_ERR_LIB, "Error in LAPACK routine XGETRF INFO=%" PetscBLASInt_FMT, info);
   }
   /* Free Memory */
   PetscCall(PetscFree(wr));

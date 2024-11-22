@@ -603,7 +603,7 @@ PetscErrorCode FVRHSFunction(TS ts, PetscReal time, Vec X, Vec F, void *vctx)
   PetscCall(DMDAVecRestoreArray(da, F, &f));
   PetscCall(DMDARestoreArray(da, PETSC_TRUE, &slope));
   PetscCall(DMRestoreLocalVector(da, &Xloc));
-  PetscCall(MPIU_Allreduce(&cfl_idt, &ctx->cfl_idt, 1, MPIU_REAL, MPIU_MAX, PetscObjectComm((PetscObject)da)));
+  PetscCallMPI(MPIU_Allreduce(&cfl_idt, &ctx->cfl_idt, 1, MPIU_REAL, MPIU_MAX, PetscObjectComm((PetscObject)da)));
   if (0) {
     /* We need to a way to inform the TS of a CFL constraint, this is a debugging fragment */
     PetscReal dt, tnow;
@@ -611,7 +611,7 @@ PetscErrorCode FVRHSFunction(TS ts, PetscReal time, Vec X, Vec F, void *vctx)
     PetscCall(TSGetTime(ts, &tnow));
     if (dt > 0.5 / ctx->cfl_idt) {
       if (1) {
-        PetscCall(PetscPrintf(ctx->comm, "Stability constraint exceeded at t=%g, dt %g > %g\n", (double)tnow, (double)dt, (double)(0.5 / ctx->cfl_idt)));
+        PetscCall(PetscPrintf(ctx->comm, "Stability constraint exceeded at t=%g, dt %g > %g\n", (double)tnow, (double)dt, (double)(1 / (2 * ctx->cfl_idt))));
       } else SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Stability constraint exceeded, %g > %g", (double)dt, (double)(ctx->cfl / ctx->cfl_idt));
     }
   }
@@ -668,7 +668,7 @@ PetscErrorCode SolutionStatsView(DM da, Vec X, PetscViewer viewer)
     for (i = xs; i < xs + xm; i++) {
       for (j = 0; j < dof; j++) tvsum += PetscAbsScalar(x[i * dof + j] - x[(i - 1) * dof + j]);
     }
-    PetscCall(MPIU_Allreduce(&tvsum, &tvgsum, 1, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)da)));
+    PetscCallMPI(MPIU_Allreduce(&tvsum, &tvgsum, 1, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)da)));
     PetscCall(DMDAVecRestoreArrayRead(da, Xloc, (void *)&x));
     PetscCall(DMRestoreLocalVector(da, &Xloc));
     PetscCall(VecMin(X, &imin, &xmin));

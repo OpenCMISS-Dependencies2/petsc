@@ -82,7 +82,7 @@ static PetscErrorCode PetscSpaceSetFromOptions_Tensor(PetscSpace sp, PetscOption
         char tprefix[128];
 
         PetscCall(PetscSpaceTensorCreateSubspace(sp, 1, 1, &subspace));
-        PetscCall(PetscSNPrintf(tprefix, 128, "%d_", (int)i));
+        PetscCall(PetscSNPrintf(tprefix, 128, "%" PetscInt_FMT "_", i));
         PetscCall(PetscObjectAppendOptionsPrefix((PetscObject)subspace, tprefix));
       } else PetscCall(PetscObjectReference((PetscObject)subspace));
       PetscCall(PetscSpaceSetFromOptions(subspace));
@@ -233,7 +233,7 @@ static PetscErrorCode PetscSpaceSetUp_Tensor(PetscSpace sp)
       PetscFunctionReturn(PETSC_SUCCESS);
     }
   }
-  deg    = PETSC_MAX_INT;
+  deg    = PETSC_INT_MAX;
   maxDeg = 0;
   for (PetscInt i = 0; i < Ns; i++) {
     PetscSpace si;

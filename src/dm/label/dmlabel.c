@@ -654,7 +654,7 @@ PetscErrorCode DMLabelCompare(MPI_Comm comm, DMLabel l0, DMLabel l1, PetscBool *
     PetscCall(DMLabelGetDefaultValue(l1, &v1));
     eq = (PetscBool)(v0 == v1);
     if (!eq) PetscCall(PetscSNPrintf(msg, sizeof(msg), "Default value of DMLabel l0 \"%s\" = %" PetscInt_FMT " != %" PetscInt_FMT " = Default value of DMLabel l1 \"%s\"", name0, v0, v1, name1));
-    PetscCall(MPIU_Allreduce(MPI_IN_PLACE, &eq, 1, MPIU_BOOL, MPI_LAND, comm));
+    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &eq, 1, MPIU_BOOL, MPI_LAND, comm));
     if (!eq) goto finish;
   }
   {
@@ -666,7 +666,7 @@ PetscErrorCode DMLabelCompare(MPI_Comm comm, DMLabel l0, DMLabel l1, PetscBool *
     PetscCall(ISDestroy(&is0));
     PetscCall(ISDestroy(&is1));
     if (!eq) PetscCall(PetscSNPrintf(msg, sizeof(msg), "Stratum values in DMLabel l0 \"%s\" are different than in DMLabel l1 \"%s\"", name0, name1));
-    PetscCall(MPIU_Allreduce(MPI_IN_PLACE, &eq, 1, MPIU_BOOL, MPI_LAND, comm));
+    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &eq, 1, MPIU_BOOL, MPI_LAND, comm));
     if (!eq) goto finish;
   }
   {
@@ -690,7 +690,7 @@ PetscErrorCode DMLabelCompare(MPI_Comm comm, DMLabel l0, DMLabel l1, PetscBool *
         break;
       }
     }
-    PetscCall(MPIU_Allreduce(MPI_IN_PLACE, &eq, 1, MPIU_BOOL, MPI_LAND, comm));
+    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &eq, 1, MPIU_BOOL, MPI_LAND, comm));
   }
 finish:
   /* If message output arg not set, print to stderr */
@@ -721,7 +721,7 @@ finish:
 @*/
 PetscErrorCode DMLabelComputeIndex(DMLabel label)
 {
-  PetscInt pStart = PETSC_MAX_INT, pEnd = -1, v;
+  PetscInt pStart = PETSC_INT_MAX, pEnd = -1, v;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(label, DMLABEL_CLASSID, 1);
@@ -739,7 +739,7 @@ PetscErrorCode DMLabelComputeIndex(DMLabel label)
     }
     PetscCall(ISRestoreIndices(label->points[v], &points));
   }
-  label->pStart = pStart == PETSC_MAX_INT ? -1 : pStart;
+  label->pStart = pStart == PETSC_INT_MAX ? -1 : pStart;
   label->pEnd   = pEnd;
   PetscCall(DMLabelCreateIndex(label, label->pStart, label->pEnd));
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -1233,7 +1233,7 @@ PetscErrorCode DMLabelGetValueIS(DMLabel label, IS *values)
 @*/
 PetscErrorCode DMLabelGetValueBounds(DMLabel label, PetscInt *minValue, PetscInt *maxValue)
 {
-  PetscInt min = PETSC_MAX_INT, max = PETSC_MIN_INT;
+  PetscInt min = PETSC_INT_MAX, max = PETSC_INT_MIN;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(label, DMLABEL_CLASSID, 1);
@@ -1705,7 +1705,7 @@ PetscErrorCode DMLabelPermute(DMLabel label, IS permutation, DMLabel *labelNew)
     }
     PetscCall(ISRestoreIndices((*labelNew)->points[v], &points));
     PetscCall(PetscSortInt(size, pointsNew));
-    PetscCall(ISDestroy(&((*labelNew)->points[v])));
+    PetscCall(ISDestroy(&(*labelNew)->points[v]));
     if (size > 0 && pointsNew[size - 1] == pointsNew[0] + size - 1) {
       PetscCall(ISCreateStride(PETSC_COMM_SELF, size, pointsNew[0], 1, &((*labelNew)->points[v])));
       PetscCall(PetscFree(pointsNew));
@@ -1808,7 +1808,7 @@ PetscErrorCode DMLabelDistribute(DMLabel label, PetscSF sf, DMLabel *labelNew)
   PetscInt   **points;
   const char  *lname = NULL;
   char        *name;
-  PetscInt     nameSize;
+  PetscMPIInt  nameSize;
   PetscHSetI   stratumHash;
   size_t       len = 0;
   PetscMPIInt  rank;
@@ -1827,8 +1827,8 @@ PetscErrorCode DMLabelDistribute(DMLabel label, PetscSF sf, DMLabel *labelNew)
     PetscCall(PetscObjectGetName((PetscObject)label, &lname));
     PetscCall(PetscStrlen(lname, &len));
   }
-  nameSize = len;
-  PetscCallMPI(MPI_Bcast(&nameSize, 1, MPIU_INT, 0, comm));
+  PetscCall(PetscMPIIntCast(len, &nameSize));
+  PetscCallMPI(MPI_Bcast(&nameSize, 1, MPI_INT, 0, comm));
   PetscCall(PetscMalloc1(nameSize + 1, &name));
   if (rank == 0) PetscCall(PetscArraycpy(name, lname, nameSize + 1));
   PetscCallMPI(MPI_Bcast(name, nameSize + 1, MPI_CHAR, 0, comm));
@@ -1928,7 +1928,7 @@ PetscErrorCode DMLabelGather(DMLabel label, PetscSF sf, DMLabel *labelNew)
   PetscInt       *rootStrata;
   const char     *lname;
   char           *name;
-  PetscInt        nameSize;
+  PetscMPIInt     nameSize;
   size_t          len = 0;
   PetscMPIInt     rank, size;
 
@@ -1944,8 +1944,8 @@ PetscErrorCode DMLabelGather(DMLabel label, PetscSF sf, DMLabel *labelNew)
     PetscCall(PetscObjectGetName((PetscObject)label, &lname));
     PetscCall(PetscStrlen(lname, &len));
   }
-  nameSize = len;
-  PetscCallMPI(MPI_Bcast(&nameSize, 1, MPIU_INT, 0, comm));
+  PetscCall(PetscMPIIntCast(len, &nameSize));
+  PetscCallMPI(MPI_Bcast(&nameSize, 1, MPI_INT, 0, comm));
   PetscCall(PetscMalloc1(nameSize + 1, &name));
   if (rank == 0) PetscCall(PetscArraycpy(name, lname, nameSize + 1));
   PetscCallMPI(MPI_Bcast(name, nameSize + 1, MPI_CHAR, 0, comm));
@@ -1967,8 +1967,8 @@ PetscErrorCode DMLabelGather(DMLabel label, PetscSF sf, DMLabel *labelNew)
   PetscCall(PetscSFComputeDegreeEnd(sf, &rootDegree));
   for (p = 0, nmultiroots = 0; p < nroots; ++p) nmultiroots += rootDegree[p];
   PetscCall(PetscMalloc1(nmultiroots, &rootPoints));
-  PetscCall(PetscSFGatherBegin(sf, MPIU_2INT, leafPoints, rootPoints));
-  PetscCall(PetscSFGatherEnd(sf, MPIU_2INT, leafPoints, rootPoints));
+  PetscCall(PetscSFGatherBegin(sf, MPIU_SF_NODE, leafPoints, rootPoints));
+  PetscCall(PetscSFGatherEnd(sf, MPIU_SF_NODE, leafPoints, rootPoints));
   PetscCall(PetscSFCreate(comm, &sfLabel));
   PetscCall(PetscSFSetGraph(sfLabel, nroots, nmultiroots, NULL, PETSC_OWN_POINTER, rootPoints, PETSC_OWN_POINTER));
   /* Migrate label over inverted SF to pull stratum values at leaves into roots. */

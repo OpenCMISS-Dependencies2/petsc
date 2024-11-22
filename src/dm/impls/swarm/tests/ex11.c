@@ -222,12 +222,12 @@ static PetscErrorCode computeParticleMoments(DM sw, Vec u, PetscReal moments[3],
         for (PetscInt d = 0; d < dim; ++d) mom[2] += PetscRealPart(w[idx * Nc + c]) * PetscSqr(x[d]);
       }
     }
-    PetscCall(PetscFree(pidx));
+    PetscCall(DMSwarmSortRestorePointsPerCell(sw, cell, &Np, &pidx));
   }
   PetscCall(VecRestoreArrayRead(u, &w));
   PetscCall(DMSwarmRestoreField(sw, DMSwarmPICField_coor, NULL, NULL, (void **)&coords));
   PetscCall(DMSwarmSortRestoreAccess(sw));
-  PetscCall(MPIU_Allreduce(mom, moments, 3, MPIU_REAL, MPI_SUM, PetscObjectComm((PetscObject)sw)));
+  PetscCallMPI(MPIU_Allreduce(mom, moments, 3, MPIU_REAL, MPI_SUM, PetscObjectComm((PetscObject)sw)));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

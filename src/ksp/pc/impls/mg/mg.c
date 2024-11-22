@@ -15,7 +15,7 @@ PetscErrorCode PCMGMCycle_Private(PC pc, PC_MG_Levels **mglevelsin, PetscBool tr
 {
   PC_MG        *mg = (PC_MG *)pc->data;
   PC_MG_Levels *mgc, *mglevels = *mglevelsin;
-  PetscInt      cycles = (mglevels->level == 1) ? 1 : (PetscInt)mglevels->cycles;
+  PetscInt      cycles = (mglevels->level == 1) ? 1 : mglevels->cycles;
 
   PetscFunctionBegin;
   if (mglevels->eventsmoothsolve) PetscCall(PetscLogEventBegin(mglevels->eventsmoothsolve, 0, 0, 0, 0));
@@ -172,20 +172,20 @@ static PetscErrorCode PCApplyRichardson_MG(PC pc, Vec b, Vec x, Vec w, PetscReal
   /* since smoother is applied to full system, not just residual we need to make sure that smoothers don't
      stop prematurely due to small residual */
   for (i = 1; i < levels; i++) {
-    PetscCall(KSPSetTolerances(mglevels[i]->smoothu, 0, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT));
+    PetscCall(KSPSetTolerances(mglevels[i]->smoothu, 0, PETSC_CURRENT, PETSC_CURRENT, PETSC_CURRENT));
     if (mglevels[i]->smoothu != mglevels[i]->smoothd) {
       /* For Richardson the initial guess is nonzero since it is solving in each cycle the original system not just applying as a preconditioner */
       PetscCall(KSPSetInitialGuessNonzero(mglevels[i]->smoothd, PETSC_TRUE));
-      PetscCall(KSPSetTolerances(mglevels[i]->smoothd, 0, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT));
+      PetscCall(KSPSetTolerances(mglevels[i]->smoothd, 0, PETSC_CURRENT, PETSC_CURRENT, PETSC_CURRENT));
     }
   }
 
-  *reason = (PCRichardsonConvergedReason)0;
+  *reason = PCRICHARDSON_NOT_SET;
   for (i = 0; i < its; i++) {
     PetscCall(PCMGMCycle_Private(pc, mglevels + levels - 1, PETSC_FALSE, PETSC_FALSE, reason));
     if (*reason) break;
   }
-  if (!*reason) *reason = PCRICHARDSON_CONVERGED_ITS;
+  if (*reason == PCRICHARDSON_NOT_SET) *reason = PCRICHARDSON_CONVERGED_ITS;
   *outits = i;
   if (!changed && !changeu) mglevels[levels - 1]->b = NULL;
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -412,7 +412,7 @@ PetscErrorCode PCMGSetLevels_MG(PC pc, PetscInt levels, MPI_Comm *comms)
         PetscCall(KSPSetNormType(mglevels[i]->smoothd, KSP_NORM_NONE));
         PetscCall(KSPGetPC(mglevels[i]->smoothd, &ipc));
         PetscCall(PCSetType(ipc, PCSOR));
-        PetscCall(KSPSetTolerances(mglevels[i]->smoothd, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, mg->default_smoothd));
+        PetscCall(KSPSetTolerances(mglevels[i]->smoothd, PETSC_CURRENT, PETSC_CURRENT, PETSC_CURRENT, mg->default_smoothd));
 
         if (i == levels - 1 && levels > 1) { // replace 'mg_finegrid_' with 'mg_levels_X_'
           PetscBool set;
@@ -422,11 +422,11 @@ PetscErrorCode PCMGSetLevels_MG(PC pc, PetscInt levels, MPI_Comm *comms)
             else PetscCall(PetscSNPrintf(tprefix, 128, "mg_fine_"));
             PetscCall(KSPSetOptionsPrefix(mglevels[i]->smoothd, tprefix));
           } else {
-            PetscCall(PetscSNPrintf(tprefix, 128, "mg_levels_%d_", (int)i));
+            PetscCall(PetscSNPrintf(tprefix, 128, "mg_levels_%" PetscInt_FMT "_", i));
             PetscCall(KSPAppendOptionsPrefix(mglevels[i]->smoothd, tprefix));
           }
         } else {
-          PetscCall(PetscSNPrintf(tprefix, 128, "mg_levels_%d_", (int)i));
+          PetscCall(PetscSNPrintf(tprefix, 128, "mg_levels_%" PetscInt_FMT "_", i));
           PetscCall(KSPAppendOptionsPrefix(mglevels[i]->smoothd, tprefix));
         }
       }
@@ -718,14 +718,14 @@ PetscErrorCode PCSetFromOptions_MG(PC pc, PetscOptionItems *PetscOptionsObject)
 
     levels = mglevels[0]->levels;
     for (i = 0; i < levels; i++) {
-      PetscCall(PetscSNPrintf(eventname, PETSC_STATIC_ARRAY_LENGTH(eventname), "MGSetup Level %d", (int)i));
+      PetscCall(PetscSNPrintf(eventname, PETSC_STATIC_ARRAY_LENGTH(eventname), "MGSetup Level %" PetscInt_FMT, i));
       PetscCall(PetscLogEventRegister(eventname, ((PetscObject)pc)->classid, &mglevels[i]->eventsmoothsetup));
-      PetscCall(PetscSNPrintf(eventname, PETSC_STATIC_ARRAY_LENGTH(eventname), "MGSmooth Level %d", (int)i));
+      PetscCall(PetscSNPrintf(eventname, PETSC_STATIC_ARRAY_LENGTH(eventname), "MGSmooth Level %" PetscInt_FMT, i));
       PetscCall(PetscLogEventRegister(eventname, ((PetscObject)pc)->classid, &mglevels[i]->eventsmoothsolve));
       if (i) {
-        PetscCall(PetscSNPrintf(eventname, PETSC_STATIC_ARRAY_LENGTH(eventname), "MGResid Level %d", (int)i));
+        PetscCall(PetscSNPrintf(eventname, PETSC_STATIC_ARRAY_LENGTH(eventname), "MGResid Level %" PetscInt_FMT, i));
         PetscCall(PetscLogEventRegister(eventname, ((PetscObject)pc)->classid, &mglevels[i]->eventresidual));
-        PetscCall(PetscSNPrintf(eventname, PETSC_STATIC_ARRAY_LENGTH(eventname), "MGInterp Level %d", (int)i));
+        PetscCall(PetscSNPrintf(eventname, PETSC_STATIC_ARRAY_LENGTH(eventname), "MGInterp Level %" PetscInt_FMT, i));
         PetscCall(PetscLogEventRegister(eventname, ((PetscObject)pc)->classid, &mglevels[i]->eventinterprestrict));
       }
     }
@@ -909,9 +909,9 @@ PetscErrorCode PCSetUp_MG(PC pc)
       PetscCall(PCCompositeAddPC(ipc, cr));
       PetscCall(PCDestroy(&cr));
 
-      PetscCall(KSPSetTolerances(mglevels[i]->cr, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, mg->default_smoothd));
+      PetscCall(KSPSetTolerances(mglevels[i]->cr, PETSC_CURRENT, PETSC_CURRENT, PETSC_CURRENT, mg->default_smoothd));
       PetscCall(KSPSetInitialGuessNonzero(mglevels[i]->cr, PETSC_TRUE));
-      PetscCall(PetscSNPrintf(crprefix, 128, "mg_levels_%d_cr_", (int)i));
+      PetscCall(PetscSNPrintf(crprefix, 128, "mg_levels_%" PetscInt_FMT "_cr_", i));
       PetscCall(KSPAppendOptionsPrefix(mglevels[i]->cr, crprefix));
     }
   }
@@ -1202,7 +1202,7 @@ PetscErrorCode PCSetUp_MG(PC pc)
   if (mglevels[0]->smoothd->reason) pc->failedreason = PC_SUBPC_ERROR;
   if (mglevels[0]->eventsmoothsetup) PetscCall(PetscLogEventEnd(mglevels[0]->eventsmoothsetup, 0, 0, 0, 0));
 
-    /*
+  /*
      Dump the interpolation/restriction matrices plus the
    Jacobian/stiffness on each level. This allows MATLAB users to
    easily check if the Galerkin condition A_c = R A_f R^T is satisfied.
@@ -1740,8 +1740,8 @@ PetscErrorCode PCMGSetNumberSmooth(PC pc, PetscInt n)
   levels = mglevels[0]->levels;
 
   for (i = 1; i < levels; i++) {
-    PetscCall(KSPSetTolerances(mglevels[i]->smoothu, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, n));
-    PetscCall(KSPSetTolerances(mglevels[i]->smoothd, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, n));
+    PetscCall(KSPSetTolerances(mglevels[i]->smoothu, PETSC_CURRENT, PETSC_CURRENT, PETSC_CURRENT, n));
+    PetscCall(KSPSetTolerances(mglevels[i]->smoothd, PETSC_CURRENT, PETSC_CURRENT, PETSC_CURRENT, n));
     mg->default_smoothu = n;
     mg->default_smoothd = n;
   }

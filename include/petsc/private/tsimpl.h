@@ -174,14 +174,14 @@ struct _p_TS {
 
   /* ---------------- User (or PETSc) Provided stuff ---------------------*/
   PetscErrorCode (*monitor[MAXTSMONITORS])(TS, PetscInt, PetscReal, Vec, void *);
-  PetscErrorCode (*monitordestroy[MAXTSMONITORS])(void **);
-  void    *monitorcontext[MAXTSMONITORS];
-  PetscInt numbermonitors;
+  PetscCtxDestroyFn *monitordestroy[MAXTSMONITORS];
+  void              *monitorcontext[MAXTSMONITORS];
+  PetscInt           numbermonitors;
   PetscErrorCode (*adjointmonitor[MAXTSMONITORS])(TS, PetscInt, PetscReal, Vec, PetscInt, Vec *, Vec *, void *);
-  PetscErrorCode (*adjointmonitordestroy[MAXTSMONITORS])(void **);
-  void    *adjointmonitorcontext[MAXTSMONITORS];
-  PetscInt numberadjointmonitors;
-  PetscInt monitorFrequency; /* Number of timesteps between monitor output */
+  PetscCtxDestroyFn *adjointmonitordestroy[MAXTSMONITORS];
+  void              *adjointmonitorcontext[MAXTSMONITORS];
+  PetscInt           numberadjointmonitors;
+  PetscInt           monitorFrequency; /* Number of timesteps between monitor output */
 
   PetscErrorCode (*prestep)(TS);
   PetscErrorCode (*prestage)(TS, PetscReal);
@@ -288,16 +288,11 @@ struct _p_TS {
   /* --- Data that is unique to each particular solver --- */
   PetscInt setupcalled; /* true if setup has been called */
   void    *data;        /* implementationspecific data */
-  void    *user;        /* user context */
-
-  /* ------------------  Parameters -------------------------------------- */
-  PetscInt  max_steps; /* max number of steps */
-  PetscReal max_time;  /* max time allowed */
-
-  /* --------------------------------------------------------------------- */
+  void    *ctx;         /* user context */
 
   PetscBool steprollback;        /* flag to indicate that the step was rolled back */
   PetscBool steprestart;         /* flag to indicate that the timestepper has to discard any history and restart */
+  PetscBool stepresize;          /* flag to indicate that the discretization was resized */
   PetscInt  steps;               /* steps taken so far in all successive calls to TSSolve() */
   PetscReal ptime;               /* time at the start of the current step (stage time is internal if it exists) */
   PetscReal time_step;           /* current time increment */
@@ -312,8 +307,11 @@ struct _p_TS {
   PetscInt               reject, max_reject;
   TSExactFinalTimeOption exact_final_time;
 
-  PetscReal atol, rtol;   /* Relative and absolute tolerance for local truncation error */
-  Vec       vatol, vrtol; /* Relative and absolute tolerance in vector form */
+  PetscObjectParameterDeclare(PetscReal, rtol); /* Relative and absolute tolerance for local truncation error */
+  PetscObjectParameterDeclare(PetscReal, atol);
+  PetscObjectParameterDeclare(PetscReal, max_time); /* max time allowed */
+  PetscObjectParameterDeclare(PetscInt, max_steps); /* max number of steps */
+  Vec       vatol, vrtol;                           /* Relative and absolute tolerance in vector form */
   PetscReal cfltime, cfltime_local;
 
   PetscBool testjacobian;
@@ -326,6 +324,7 @@ struct _p_TS {
   PetscInt        num_rhs_splits;
   TS_RHSSplitLink tsrhssplit;
   PetscBool       use_splitrhsfunction;
+  SNES            snesrhssplit;
 
   /* ---------------------- Quadrature integration support ---------------------------------*/
   TS quadraturets;
@@ -535,8 +534,8 @@ struct _n_TSMonitorLGCtx {
   PetscInt   *displayvariables;
   PetscReal  *displayvalues;
   PetscErrorCode (*transform)(void *, Vec, Vec *);
-  PetscErrorCode (*transformdestroy)(void *);
-  void *transformctx;
+  PetscCtxDestroyFn *transformdestroy;
+  void              *transformctx;
 };
 
 struct _n_TSMonitorSPCtx {
@@ -594,4 +593,9 @@ struct _n_TSMonitorDrawCtx {
   PetscBool   showinitial;
   PetscInt    howoften; /* when > 0 uses step % howoften, when negative only final solution plotted */
   PetscBool   showtimestepandtime;
+};
+
+struct _n_TSMonitorVTKCtx {
+  char    *filenametemplate;
+  PetscInt interval; /* when > 0 uses step % interval, when negative only final solution plotted */
 };

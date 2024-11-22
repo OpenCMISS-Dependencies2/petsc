@@ -4,13 +4,12 @@ import os
 class Configure(config.package.GNUPackage):
   def __init__(self, framework):
     config.package.GNUPackage.__init__(self, framework)
-    self.version         = '2.31.0'
+    self.version         = '2.32.0'
     self.minversion      = '2.14'
     self.versionname     = 'HYPRE_RELEASE_VERSION'
     self.versioninclude  = 'HYPRE_config.h'
     self.requiresversion = 1
-    #self.gitcommit       = 'v'+self.version
-    self.gitcommit       = 'ee74c20e7a84e4e48eec142c6bb6ff2a75db72f1' # master feb-16-2024 (2.31.0+recursive-make-fix)
+    self.gitcommit       = 'v'+self.version
     self.download        = ['git://https://github.com/hypre-space/hypre','https://github.com/hypre-space/hypre/archive/'+self.gitcommit+'.tar.gz']
     self.functions       = ['HYPRE_IJMatrixCreate']
     self.includes        = ['HYPRE.h']
@@ -24,6 +23,7 @@ class Configure(config.package.GNUPackage):
     config.package.GNUPackage.setupHelp(self,help)
     import nargs
     help.addArgument('HYPRE', '-with-hypre-gpu-arch=<string>',  nargs.ArgString(None, 0, 'Value passed to hypre\'s --with-gpu-arch= configure option'))
+    help.addArgument('HYPRE', '-download-hypre-openmp', nargs.ArgBool(None, 1, 'Let hypre use OpenMP if available'))    
     return
 
   def setupDependencies(self, framework):
@@ -106,8 +106,7 @@ class Configure(config.package.GNUPackage):
       self.pushLanguage('HIP')
       cucc = self.getCompiler()
       devflags += ' '.join(('','-x','hip',stdflag,''))
-      devflags += self.getCompilerFlags() + ' ' + self.setCompilers.HIPPPFLAGS + ' ' + self.mpi.includepaths + ' ' + self.headers.toString(self.dinclude)
-      devflags = devflags.replace('-fvisibility=hidden','')
+      devflags += ' '.join(self.removeVisibilityFlag(self.getCompilerFlags().split())) + ' ' + self.setCompilers.HIPPPFLAGS + ' ' + self.mpi.includepaths + ' ' + self.headers.toString(self.dinclude)
       self.popLanguage()
     elif self.cuda.found:
       stdflag   = '-std=c++11'
@@ -127,9 +126,14 @@ class Configure(config.package.GNUPackage):
       devflags += ' '.join(('','-expt-extended-lambda',stdflag,'-x','cu',''))
       devflags += self.updatePackageCUDAFlags(self.getCompilerFlags()) + ' ' + self.setCompilers.CUDAPPFLAGS + ' ' + self.mpi.includepaths+ ' ' + self.headers.toString(self.dinclude)
       self.popLanguage()
-    elif self.openmp.found:
+    elif self.openmp.found and self.argDB['download-hypre-openmp']:
       args.append('--with-openmp')
       self.usesopenmp = 'yes'
+
+    if self.usesopenmp == 'no':
+      if hasattr(self,'openmp') and hasattr(self.openmp,'ompflag'):
+        args = self.rmValueArgStartsWith(args,['CC','CXX','FC'],self.openmp.ompflag)
+
     args.append('CUCC="'+cucc+'"')
     args.append('CUFLAGS="'+devflags+'"')
 

@@ -405,7 +405,7 @@ static PetscErrorCode MatView_SeqSBAIJ_ASCII(Mat A, PetscViewer viewer)
           PetscCall(PetscViewerASCIIPrintf(viewer, " (%" PetscInt_FMT ", %g) ", a->j[diag[i]], (double)PetscRealPart(1.0 / a->a[diag[i]])));
         }
 #else
-        PetscCall(PetscViewerASCIIPrintf(viewer, " (%" PetscInt_FMT ", %g) ", a->j[diag[i]], (double)(1.0 / a->a[diag[i]])));
+        PetscCall(PetscViewerASCIIPrintf(viewer, " (%" PetscInt_FMT ", %g) ", a->j[diag[i]], (double)(1 / a->a[diag[i]])));
 #endif
         /* off-diagonal entries */
         for (k = a->i[i]; k < a->i[i + 1] - 1; k++) {
@@ -458,10 +458,11 @@ static PetscErrorCode MatView_SeqSBAIJ_Draw_Zoom(PetscDraw draw, void *Aa)
 {
   Mat           A = (Mat)Aa;
   Mat_SeqSBAIJ *a = (Mat_SeqSBAIJ *)A->data;
-  PetscInt      row, i, j, k, l, mbs = a->mbs, color, bs = A->rmap->bs, bs2 = a->bs2;
+  PetscInt      row, i, j, k, l, mbs = a->mbs, bs = A->rmap->bs, bs2 = a->bs2;
   PetscReal     xl, yl, xr, yr, x_l, x_r, y_l, y_r;
   MatScalar    *aa;
   PetscViewer   viewer;
+  int           color;
 
   PetscFunctionBegin;
   PetscCall(PetscObjectQuery((PetscObject)A, "Zoomviewer", (PetscObject *)&viewer));
@@ -797,7 +798,7 @@ static PetscErrorCode MatAssemblyEnd_SeqSBAIJ(Mat A, MatAssemblyType mode)
       PetscCall(PetscFree(a->jshort));
     }
     PetscCall(PetscMalloc1(a->i[A->rmap->n], &a->jshort));
-    for (i = 0; i < a->i[A->rmap->n]; i++) a->jshort[i] = a->j[i];
+    for (i = 0; i < a->i[A->rmap->n]; i++) a->jshort[i] = (short)a->j[i];
     A->ops->mult   = MatMult_SeqSBAIJ_1_ushort;
     A->ops->sor    = MatSOR_SeqSBAIJ_ushort;
     a->free_jshort = PETSC_TRUE;
@@ -1163,7 +1164,7 @@ static PetscErrorCode MatZeroRowsColumns_SeqSBAIJ(Mat A, PetscInt is_n, const Pe
         for (k = 0; k < bs; k++) {
           col = bs * baij->j[j] + k;
           if (col <= i) continue;
-          aa = ((MatScalar *)baij->a) + j * bs2 + (i % bs) + bs * k;
+          aa = baij->a + j * bs2 + (i % bs) + bs * k;
           if (!zeroed[i] && zeroed[col]) bb[i] -= aa[0] * xx[col];
           if (zeroed[i] && !zeroed[col]) bb[col] -= aa[0] * xx[i];
         }
@@ -1179,7 +1180,7 @@ static PetscErrorCode MatZeroRowsColumns_SeqSBAIJ(Mat A, PetscInt is_n, const Pe
         for (k = 0; k < bs; k++) {
           col = bs * baij->j[j] + k;
           if (zeroed[col]) {
-            aa    = ((MatScalar *)baij->a) + j * bs2 + (i % bs) + bs * k;
+            aa    = baij->a + j * bs2 + (i % bs) + bs * k;
             aa[0] = 0.0;
           }
         }
@@ -1196,7 +1197,7 @@ static PetscErrorCode MatZeroRowsColumns_SeqSBAIJ(Mat A, PetscInt is_n, const Pe
   for (i = 0; i < is_n; i++) {
     row   = is_idx[i];
     count = (baij->i[row / bs + 1] - baij->i[row / bs]) * bs;
-    aa    = ((MatScalar *)baij->a) + baij->i[row / bs] * bs2 + (row % bs);
+    aa    = baij->a + baij->i[row / bs] * bs2 + (row % bs);
     for (k = 0; k < count; k++) {
       aa[0] = zero;
       aa += bs;
@@ -1417,7 +1418,10 @@ static struct _MatOps MatOps_Values = {MatSetValues_SeqSBAIJ,
                                        /*150*/ NULL,
                                        MatEliminateZeros_SeqSBAIJ,
                                        NULL,
-                                       NULL};
+                                       NULL,
+                                       NULL,
+                                       /*155*/ NULL,
+                                       MatCopyHashToXAIJ_Seq_Hash};
 
 static PetscErrorCode MatStoreValues_SeqSBAIJ(Mat mat)
 {
@@ -1577,18 +1581,20 @@ static PetscErrorCode MatSeqSBAIJSetPreallocation_SeqSBAIJ(Mat B, PetscInt bs, P
 
     /* allocate the matrix space */
     PetscCall(MatSeqXAIJFreeAIJ(B, &b->a, &b->j, &b->i));
-    PetscCall(PetscMalloc3(bs2 * nz, &b->a, nz, &b->j, B->rmap->N + 1, &b->i));
+    PetscCall(PetscShmgetAllocateArray(bs2 * nz, sizeof(PetscScalar), (void **)&b->a));
+    PetscCall(PetscShmgetAllocateArray(nz, sizeof(PetscInt), (void **)&b->j));
+    PetscCall(PetscShmgetAllocateArray(B->rmap->n + 1, sizeof(PetscInt), (void **)&b->i));
+    b->free_a  = PETSC_TRUE;
+    b->free_ij = PETSC_TRUE;
     PetscCall(PetscArrayzero(b->a, nz * bs2));
     PetscCall(PetscArrayzero(b->j, nz));
-
-    b->singlemalloc = PETSC_TRUE;
+    b->free_a  = PETSC_TRUE;
+    b->free_ij = PETSC_TRUE;
 
     /* pointer to beginning of each row */
     b->i[0] = 0;
     for (i = 1; i < mbs + 1; i++) b->i[i] = b->i[i - 1] + b->imax[i - 1];
 
-    b->free_a  = PETSC_TRUE;
-    b->free_ij = PETSC_TRUE;
   } else {
     b->free_a  = PETSC_FALSE;
     b->free_ij = PETSC_FALSE;
@@ -2105,7 +2111,7 @@ PetscErrorCode MatDuplicate_SeqSBAIJ(Mat A, MatDuplicateOption cpvalues, Mat *B)
     c->ilen           = a->ilen;
     c->free_imax_ilen = PETSC_FALSE;
   } else {
-    PetscCall(PetscMalloc2((mbs + 1), &c->imax, (mbs + 1), &c->ilen));
+    PetscCall(PetscMalloc2(mbs + 1, &c->imax, mbs + 1, &c->ilen));
     for (i = 0; i < mbs; i++) {
       c->imax[i] = a->imax[i];
       c->ilen[i] = a->ilen[i];
@@ -2114,23 +2120,22 @@ PetscErrorCode MatDuplicate_SeqSBAIJ(Mat A, MatDuplicateOption cpvalues, Mat *B)
   }
 
   /* allocate the matrix space */
+  PetscCall(PetscShmgetAllocateArray(bs2 * nz, sizeof(PetscScalar), (void **)&c->a));
+  c->free_a = PETSC_TRUE;
   if (cpvalues == MAT_SHARE_NONZERO_PATTERN) {
-    PetscCall(PetscMalloc1(bs2 * nz, &c->a));
-    c->i            = a->i;
-    c->j            = a->j;
-    c->singlemalloc = PETSC_FALSE;
-    c->free_a       = PETSC_TRUE;
-    c->free_ij      = PETSC_FALSE;
-    c->parent       = A;
+    PetscCall(PetscArrayzero(c->a, bs2 * nz));
+    c->i       = a->i;
+    c->j       = a->j;
+    c->free_ij = PETSC_FALSE;
+    c->parent  = A;
     PetscCall(PetscObjectReference((PetscObject)A));
     PetscCall(MatSetOption(A, MAT_NEW_NONZERO_LOCATION_ERR, PETSC_TRUE));
     PetscCall(MatSetOption(C, MAT_NEW_NONZERO_LOCATION_ERR, PETSC_TRUE));
   } else {
-    PetscCall(PetscMalloc3(bs2 * nz, &c->a, nz, &c->j, mbs + 1, &c->i));
+    PetscCall(PetscShmgetAllocateArray(nz, sizeof(PetscInt), (void **)&c->j));
+    PetscCall(PetscShmgetAllocateArray(mbs + 1, sizeof(PetscInt), (void **)&c->i));
     PetscCall(PetscArraycpy(c->i, a->i, mbs + 1));
-    c->singlemalloc = PETSC_TRUE;
-    c->free_a       = PETSC_TRUE;
-    c->free_ij      = PETSC_TRUE;
+    c->free_ij = PETSC_TRUE;
   }
   if (mbs > 0) {
     if (cpvalues != MAT_SHARE_NONZERO_PATTERN) PetscCall(PetscArraycpy(c->j, a->j, nz));
@@ -2239,7 +2244,6 @@ PetscErrorCode MatCreateSeqSBAIJWithArrays(MPI_Comm comm, PetscInt bs, PetscInt 
   sbaij->j = j;
   sbaij->a = a;
 
-  sbaij->singlemalloc   = PETSC_FALSE;
   sbaij->nonew          = -1; /*this indicates that inserting a new value in the matrix that generates a new nonzero is an error*/
   sbaij->free_a         = PETSC_FALSE;
   sbaij->free_ij        = PETSC_FALSE;

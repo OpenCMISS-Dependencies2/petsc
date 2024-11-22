@@ -252,7 +252,7 @@ PETSC_EXTERN PetscErrorCode TSDestroy(TS *);
 PETSC_EXTERN PetscErrorCode TSSetProblemType(TS, TSProblemType);
 PETSC_EXTERN PetscErrorCode TSGetProblemType(TS, TSProblemType *);
 PETSC_EXTERN PetscErrorCode TSMonitor(TS, PetscInt, PetscReal, Vec);
-PETSC_EXTERN PetscErrorCode TSMonitorSet(TS, PetscErrorCode (*)(TS, PetscInt, PetscReal, Vec, void *), void *, PetscErrorCode (*)(void **));
+PETSC_EXTERN PetscErrorCode TSMonitorSet(TS, PetscErrorCode (*)(TS, PetscInt, PetscReal, Vec, void *), void *, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode TSMonitorSetFromOptions(TS, const char[], const char[], const char[], PetscErrorCode (*)(TS, PetscInt, PetscReal, Vec, PetscViewerAndFormat *), PetscErrorCode (*)(TS, PetscViewerAndFormat *));
 PETSC_EXTERN PetscErrorCode TSMonitorCancel(TS);
 
@@ -375,7 +375,7 @@ PETSC_EXTERN PetscErrorCode TSGetQuadratureTS(TS, PetscBool *, TS *);
 
 PETSC_EXTERN PetscErrorCode TSAdjointSetFromOptions(TS, PetscOptionItems *);
 PETSC_EXTERN PetscErrorCode TSAdjointMonitor(TS, PetscInt, PetscReal, Vec, PetscInt, Vec *, Vec *);
-PETSC_EXTERN PetscErrorCode TSAdjointMonitorSet(TS, PetscErrorCode (*)(TS, PetscInt, PetscReal, Vec, PetscInt, Vec *, Vec *, void *), void *, PetscErrorCode (*)(void **));
+PETSC_EXTERN PetscErrorCode TSAdjointMonitorSet(TS, PetscErrorCode (*)(TS, PetscInt, PetscReal, Vec, PetscInt, Vec *, Vec *, void *), void *, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode TSAdjointMonitorCancel(TS);
 PETSC_EXTERN PetscErrorCode TSAdjointMonitorSetFromOptions(TS, const char[], const char[], const char[], PetscErrorCode (*)(TS, PetscInt, PetscReal, Vec, PetscInt, Vec *, Vec *, PetscViewerAndFormat *), PetscErrorCode (*)(TS, PetscViewerAndFormat *));
 
@@ -435,8 +435,11 @@ PETSC_EXTERN PetscErrorCode TSAdjointMonitorDefault(TS, PetscInt, PetscReal, Vec
 PETSC_EXTERN PetscErrorCode TSAdjointMonitorDrawSensi(TS, PetscInt, PetscReal, Vec, PetscInt, Vec *, Vec *, void *);
 
 PETSC_EXTERN PetscErrorCode TSMonitorSolution(TS, PetscInt, PetscReal, Vec, PetscViewerAndFormat *);
-PETSC_EXTERN PetscErrorCode TSMonitorSolutionVTK(TS, PetscInt, PetscReal, Vec, void *);
-PETSC_EXTERN PetscErrorCode TSMonitorSolutionVTKDestroy(void *);
+
+typedef struct _n_TSMonitorVTKCtx *TSMonitorVTKCtx;
+PETSC_EXTERN PetscErrorCode        TSMonitorSolutionVTK(TS, PetscInt, PetscReal, Vec, TSMonitorVTKCtx);
+PETSC_EXTERN PetscErrorCode        TSMonitorSolutionVTKDestroy(TSMonitorVTKCtx *);
+PETSC_EXTERN PetscErrorCode        TSMonitorSolutionVTKCtxCreate(const char *, TSMonitorVTKCtx *);
 
 PETSC_EXTERN PetscErrorCode TSStep(TS);
 PETSC_EXTERN PetscErrorCode TSEvaluateWLTE(TS, NormType, PetscInt *, PetscReal *);
@@ -693,10 +696,14 @@ PETSC_EXTERN PetscErrorCode TSGetI2Jacobian(TS, Mat *, Mat *, TSI2JacobianFn **,
 PETSC_EXTERN PetscErrorCode TSRHSSplitSetIS(TS, const char[], IS);
 PETSC_EXTERN PetscErrorCode TSRHSSplitGetIS(TS, const char[], IS *);
 PETSC_EXTERN PetscErrorCode TSRHSSplitSetRHSFunction(TS, const char[], Vec, TSRHSFunctionFn *, void *);
+PETSC_EXTERN PetscErrorCode TSRHSSplitSetIFunction(TS, const char[], Vec, TSIFunctionFn *, void *);
+PETSC_EXTERN PetscErrorCode TSRHSSplitSetIJacobian(TS, const char[], Mat, Mat, TSIJacobianFn *, void *);
 PETSC_EXTERN PetscErrorCode TSRHSSplitGetSubTS(TS, const char[], TS *);
 PETSC_EXTERN PetscErrorCode TSRHSSplitGetSubTSs(TS, PetscInt *, TS *[]);
 PETSC_EXTERN PetscErrorCode TSSetUseSplitRHSFunction(TS, PetscBool);
 PETSC_EXTERN PetscErrorCode TSGetUseSplitRHSFunction(TS, PetscBool *);
+PETSC_EXTERN PetscErrorCode TSRHSSplitGetSNES(TS, SNES *);
+PETSC_EXTERN PetscErrorCode TSRHSSplitSetSNES(TS, SNES);
 
 PETSC_EXTERN TSRHSFunctionFn TSComputeRHSFunctionLinear;
 PETSC_EXTERN TSRHSJacobianFn TSComputeRHSJacobianConstant;
@@ -721,6 +728,7 @@ PETSC_EXTERN PetscErrorCode TSPostStep(TS);
 PETSC_EXTERN PetscErrorCode TSResize(TS);
 PETSC_EXTERN PetscErrorCode TSResizeRetrieveVec(TS, const char *, Vec *);
 PETSC_EXTERN PetscErrorCode TSResizeRegisterVec(TS, const char *, Vec);
+PETSC_EXTERN PetscErrorCode TSGetStepResize(TS, PetscBool *);
 
 PETSC_EXTERN PetscErrorCode TSInterpolate(TS, PetscReal, Vec);
 PETSC_EXTERN PetscErrorCode TSSetTolerances(TS, PetscReal, Vec, PetscReal, Vec);
@@ -758,22 +766,22 @@ PETSC_EXTERN PetscErrorCode TSVISetVariableBounds(TS, Vec, Vec);
 PETSC_EXTERN PetscErrorCode DMTSSetBoundaryLocal(DM, PetscErrorCode (*)(DM, PetscReal, Vec, Vec, void *), void *);
 PETSC_EXTERN PetscErrorCode DMTSSetRHSFunction(DM, TSRHSFunctionFn *, void *);
 PETSC_EXTERN PetscErrorCode DMTSGetRHSFunction(DM, TSRHSFunctionFn **, void **);
-PETSC_EXTERN PetscErrorCode DMTSSetRHSFunctionContextDestroy(DM, PetscErrorCode (*)(void *));
+PETSC_EXTERN PetscErrorCode DMTSSetRHSFunctionContextDestroy(DM, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode DMTSSetRHSJacobian(DM, TSRHSJacobianFn *, void *);
 PETSC_EXTERN PetscErrorCode DMTSGetRHSJacobian(DM, TSRHSJacobianFn **, void **);
-PETSC_EXTERN PetscErrorCode DMTSSetRHSJacobianContextDestroy(DM, PetscErrorCode (*)(void *));
+PETSC_EXTERN PetscErrorCode DMTSSetRHSJacobianContextDestroy(DM, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode DMTSSetIFunction(DM, TSIFunctionFn *, void *);
 PETSC_EXTERN PetscErrorCode DMTSGetIFunction(DM, TSIFunctionFn **, void **);
-PETSC_EXTERN PetscErrorCode DMTSSetIFunctionContextDestroy(DM, PetscErrorCode (*)(void *));
+PETSC_EXTERN PetscErrorCode DMTSSetIFunctionContextDestroy(DM, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode DMTSSetIJacobian(DM, TSIJacobianFn *, void *);
 PETSC_EXTERN PetscErrorCode DMTSGetIJacobian(DM, TSIJacobianFn **, void **);
-PETSC_EXTERN PetscErrorCode DMTSSetIJacobianContextDestroy(DM, PetscErrorCode (*)(void *));
+PETSC_EXTERN PetscErrorCode DMTSSetIJacobianContextDestroy(DM, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode DMTSSetI2Function(DM, TSI2FunctionFn *, void *);
 PETSC_EXTERN PetscErrorCode DMTSGetI2Function(DM, TSI2FunctionFn **, void **);
-PETSC_EXTERN PetscErrorCode DMTSSetI2FunctionContextDestroy(DM, PetscErrorCode (*)(void *));
+PETSC_EXTERN PetscErrorCode DMTSSetI2FunctionContextDestroy(DM, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode DMTSSetI2Jacobian(DM, TSI2JacobianFn *, void *);
 PETSC_EXTERN PetscErrorCode DMTSGetI2Jacobian(DM, TSI2JacobianFn **, void **);
-PETSC_EXTERN PetscErrorCode DMTSSetI2JacobianContextDestroy(DM, PetscErrorCode (*)(void *));
+PETSC_EXTERN PetscErrorCode DMTSSetI2JacobianContextDestroy(DM, PetscCtxDestroyFn *);
 
 /*S
   TSTransientVariableFn - A prototype of a function to transform from state to transient variables that would be passed to `TSSetTransientVariable()`
@@ -956,8 +964,8 @@ PETSC_EXTERN PetscErrorCode TSMonitorLGGetVariableNames(TS, const char *const **
 PETSC_EXTERN PetscErrorCode TSMonitorLGCtxSetVariableNames(TSMonitorLGCtx, const char *const *);
 PETSC_EXTERN PetscErrorCode TSMonitorLGSetDisplayVariables(TS, const char *const *);
 PETSC_EXTERN PetscErrorCode TSMonitorLGCtxSetDisplayVariables(TSMonitorLGCtx, const char *const *);
-PETSC_EXTERN PetscErrorCode TSMonitorLGSetTransform(TS, PetscErrorCode (*)(void *, Vec, Vec *), PetscErrorCode (*)(void *), void *);
-PETSC_EXTERN PetscErrorCode TSMonitorLGCtxSetTransform(TSMonitorLGCtx, PetscErrorCode (*)(void *, Vec, Vec *), PetscErrorCode (*)(void *), void *);
+PETSC_EXTERN PetscErrorCode TSMonitorLGSetTransform(TS, PetscErrorCode (*)(void *, Vec, Vec *), PetscCtxDestroyFn *, void *);
+PETSC_EXTERN PetscErrorCode TSMonitorLGCtxSetTransform(TSMonitorLGCtx, PetscErrorCode (*)(void *, Vec, Vec *), PetscCtxDestroyFn *, void *);
 PETSC_EXTERN PetscErrorCode TSMonitorLGError(TS, PetscInt, PetscReal, Vec, void *);
 PETSC_EXTERN PetscErrorCode TSMonitorLGSNESIterations(TS, PetscInt, PetscReal, Vec, void *);
 PETSC_EXTERN PetscErrorCode TSMonitorLGKSPIterations(TS, PetscInt, PetscReal, Vec, void *);
@@ -1322,6 +1330,8 @@ PETSC_EXTERN PetscErrorCode TSARKIMEXGetType(TS ts, TSARKIMEXType *);
 PETSC_EXTERN PetscErrorCode TSARKIMEXSetType(TS ts, TSARKIMEXType);
 PETSC_EXTERN PetscErrorCode TSARKIMEXSetFullyImplicit(TS, PetscBool);
 PETSC_EXTERN PetscErrorCode TSARKIMEXGetFullyImplicit(TS, PetscBool *);
+PETSC_EXTERN PetscErrorCode TSARKIMEXSetFastSlowSplit(TS, PetscBool);
+PETSC_EXTERN PetscErrorCode TSARKIMEXGetFastSlowSplit(TS, PetscBool *);
 PETSC_EXTERN PetscErrorCode TSARKIMEXRegister(TSARKIMEXType, PetscInt, PetscInt, const PetscReal[], const PetscReal[], const PetscReal[], const PetscReal[], const PetscReal[], const PetscReal[], const PetscReal[], const PetscReal[], PetscInt, const PetscReal[], const PetscReal[]);
 PETSC_EXTERN PetscErrorCode TSARKIMEXInitializePackage(void);
 PETSC_EXTERN PetscErrorCode TSARKIMEXFinalizePackage(void);

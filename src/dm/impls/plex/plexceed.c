@@ -77,6 +77,7 @@ PetscErrorCode DMPlexGetLocalOffsets(DM dm, DMLabel domain_label, PetscInt label
     PetscInt        num_fields;
 
     PetscCall(DMGetRegionDS(dm, domain_label, &field_is, &ds, NULL));
+    PetscCheck(field_is, PetscObjectComm((PetscObject)dm), PETSC_ERR_ARG_WRONG, "Domain label does not have any fields associated with it");
     // Translate dm_field to ds_field
     PetscCall(ISGetIndices(field_is, &fields));
     PetscCall(ISGetSize(field_is, &num_fields));
@@ -156,7 +157,7 @@ PetscErrorCode DMPlexGetLocalOffsets(DM dm, DMLabel domain_label, PetscInt label
     }
     PetscCall(DMPlexRestoreClosureIndices(dm, section, section, c, PETSC_TRUE, &num_indices, &indices, field_offsets, NULL));
   }
-  PetscCheck(cell_offset == restr_size, PETSC_COMM_SELF, PETSC_ERR_SUP, "Shape mismatch, offsets array of shape (%" PetscInt_FMT ", %" PetscInt_FMT ") initialized for %" PetscInt_FMT " nodes", *num_cells, (*cell_size), cell_offset);
+  PetscCheck(cell_offset == restr_size, PETSC_COMM_SELF, PETSC_ERR_SUP, "Shape mismatch, offsets array of shape (%" PetscInt_FMT ", %" PetscInt_FMT ") initialized for %" PetscInt_FMT " nodes", *num_cells, *cell_size, cell_offset);
   if (iter_is) PetscCall(ISRestoreIndices(iter_is, &iter_indices));
   PetscCall(ISDestroy(&iter_is));
 

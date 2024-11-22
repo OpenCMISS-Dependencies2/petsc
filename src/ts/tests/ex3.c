@@ -22,9 +22,9 @@ Input arguments are\n\
 typedef struct {
   Mat          Amat;             /* left hand side matrix */
   Vec          ksp_rhs, ksp_sol; /* working vectors for formulating inv(Alhs)*(Arhs*U+g) */
-  int          max_probsz;       /* max size of the problem */
+  PetscInt     max_probsz;       /* max size of the problem */
   PetscBool    useAlhs;          /* flag (1 indicates solving Alhs*U' = Arhs*U+g */
-  int          nz;               /* total number of grid points */
+  PetscInt     nz;               /* total number of grid points */
   PetscInt     m;                /* total number of interio grid points */
   Vec          solution;         /* global exact ts solution vector */
   PetscScalar *z;                /* array of grid points */
@@ -53,7 +53,7 @@ int main(int argc, char **argv)
   PetscMPIInt size;
 
   PetscFunctionBeginUser;
-  PetscCall(PetscInitialize(&argc, &argv, (char *)0, help));
+  PetscCall(PetscInitialize(&argc, &argv, NULL, help));
   PetscCallMPI(MPI_Comm_size(PETSC_COMM_WORLD, &size));
   PetscCheck(size == 1, PETSC_COMM_SELF, PETSC_ERR_WRONG_MPI_SIZE, "This is a uniprocessor example only");
 
@@ -63,7 +63,7 @@ int main(int argc, char **argv)
   nz        = num_z;
   m         = nz - 2;
   appctx.nz = nz;
-  max_steps = (PetscInt)10000;
+  max_steps = 10000;
 
   appctx.m          = m;
   appctx.max_probsz = nz;
@@ -112,7 +112,7 @@ int main(int argc, char **argv)
   /*-------------------*/
   for (i = 0; i < nz - 2; i++) {
     val = exact(z[i + 1], 0.0);
-    PetscCall(VecSetValue(init_sol, i, (PetscScalar)val, INSERT_VALUES));
+    PetscCall(VecSetValue(init_sol, i, val, INSERT_VALUES));
   }
   PetscCall(VecAssemblyBegin(init_sol));
   PetscCall(VecAssemblyEnd(init_sol));
@@ -128,7 +128,7 @@ int main(int argc, char **argv)
   /* Set optional user-defined monitoring routine */
   PetscCall(TSMonitorSet(ts, Monitor, &appctx, NULL));
   /* set the right-hand side of U_t = RHSfunction(U,t) */
-  PetscCall(TSSetRHSFunction(ts, NULL, (PetscErrorCode(*)(TS, PetscScalar, Vec, Vec, void *))RHSfunction, &appctx));
+  PetscCall(TSSetRHSFunction(ts, NULL, (PetscErrorCode (*)(TS, PetscScalar, Vec, Vec, void *))RHSfunction, &appctx));
 
   if (appctx.useAlhs) {
     /* set the left hand side matrix of Amat*U_t = rhs(U,t) */
@@ -278,7 +278,7 @@ PetscErrorCode Petsc_KSPSolve(AppCtx *obj)
   /*get the preconditioner context, set its type and the tolerances*/
   PetscCall(KSPGetPC(ksp, &pc));
   PetscCall(PCSetType(pc, PCLU));
-  PetscCall(KSPSetTolerances(ksp, 1.e-7, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT));
+  PetscCall(KSPSetTolerances(ksp, 1.e-7, PETSC_CURRENT, PETSC_CURRENT, PETSC_CURRENT));
 
   /*get the command line options if there are any and set them*/
   PetscCall(KSPSetFromOptions(ksp));
@@ -520,7 +520,7 @@ PetscErrorCode rhs(AppCtx *obj, PetscScalar *y, PetscInt nz, PetscScalar *z, Pet
       val += (btri[i][jj]) * (y[j]);
     }
     add_term = val + g[i];
-    PetscCall(VecSetValue(obj->ksp_rhs, (PetscInt)i, (PetscScalar)add_term, INSERT_VALUES));
+    PetscCall(VecSetValue(obj->ksp_rhs, i, add_term, INSERT_VALUES));
   }
   PetscCall(VecAssemblyBegin(obj->ksp_rhs));
   PetscCall(VecAssemblyEnd(obj->ksp_rhs));

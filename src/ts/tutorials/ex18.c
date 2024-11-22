@@ -32,7 +32,7 @@ typedef enum {
 static PetscErrorCode constant_u_2d(PetscInt, PetscReal, const PetscReal[], PetscInt, PetscScalar *, void *);
 
 /*
-  FunctionalFunc - Calculates the value of a functional of the solution at a point
+  FunctionalFn - Calculates the value of a functional of the solution at a point
 
   Input Parameters:
 + dm   - The DM
@@ -45,15 +45,15 @@ static PetscErrorCode constant_u_2d(PetscInt, PetscReal, const PetscReal[], Pets
 . f    - The value of the functional at point x
 
 */
-typedef PetscErrorCode (*FunctionalFunc)(DM, PetscReal, const PetscReal *, const PetscScalar *, PetscReal *, void *);
+typedef PetscErrorCode (*FunctionalFn)(DM, PetscReal, const PetscReal *, const PetscScalar *, PetscReal *, void *);
 
 typedef struct _n_Functional *Functional;
 struct _n_Functional {
-  char          *name;
-  FunctionalFunc func;
-  void          *ctx;
-  PetscInt       offset;
-  Functional     next;
+  char        *name;
+  FunctionalFn func;
+  void        *ctx;
+  PetscInt     offset;
+  Functional   next;
 };
 
 typedef struct {
@@ -142,7 +142,7 @@ static PetscErrorCode ProcessMonitorOptions(MPI_Comm comm, AppCtx *options)
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-static PetscErrorCode FunctionalRegister(Functional *functionalRegistry, const char name[], PetscInt *offset, FunctionalFunc func, void *ctx)
+static PetscErrorCode FunctionalRegister(Functional *functionalRegistry, const char name[], PetscInt *offset, FunctionalFn func, void *ctx)
 {
   Functional *ptr, f;
   PetscInt    lastoffset = -1;
@@ -941,9 +941,9 @@ static PetscErrorCode MonitorFunctionals(TS ts, PetscInt stepnum, PetscReal time
     }
     PetscCall(VecRestoreArrayRead(cellgeom, &cgeom));
     PetscCall(VecRestoreArrayRead(X, &x));
-    PetscCall(MPIU_Allreduce(MPI_IN_PLACE, fmin, fcount, MPIU_REAL, MPIU_MIN, PetscObjectComm((PetscObject)ts)));
-    PetscCall(MPIU_Allreduce(MPI_IN_PLACE, fmax, fcount, MPIU_REAL, MPIU_MAX, PetscObjectComm((PetscObject)ts)));
-    PetscCall(MPIU_Allreduce(MPI_IN_PLACE, fint, fcount, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)ts)));
+    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, fmin, (PetscMPIInt)fcount, MPIU_REAL, MPIU_MIN, PetscObjectComm((PetscObject)ts)));
+    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, fmax, (PetscMPIInt)fcount, MPIU_REAL, MPIU_MAX, PetscObjectComm((PetscObject)ts)));
+    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, fint, (PetscMPIInt)fcount, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)ts)));
     /* Output functional data */
     ftablealloc = fcount * 100;
     ftableused  = 0;
@@ -1022,7 +1022,7 @@ int main(int argc, char **argv)
   void     *ctxs[2] = {&t, &t};
 
   PetscFunctionBeginUser;
-  PetscCall(PetscInitialize(&argc, &argv, (char *)0, help));
+  PetscCall(PetscInitialize(&argc, &argv, NULL, help));
   comm                    = PETSC_COMM_WORLD;
   user.functionalRegistry = NULL;
   globalUser              = &user;

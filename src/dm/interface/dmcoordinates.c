@@ -558,6 +558,7 @@ PetscErrorCode DMGetCoordinatesLocalSetUp(DM dm)
 
     PetscCall(DMGetCoordinateDM(dm, &cdm));
     PetscCall(DMCreateLocalVector(cdm, &dm->coordinates[0].xl));
+    PetscCall(PetscObjectSetName((PetscObject)dm->coordinates[0].xl, "Local Coordinates"));
     // If the size of the vector is 0, it will not get the right block size
     PetscCall(VecGetBlockSize(dm->coordinates[0].x, &bs));
     PetscCall(VecSetBlockSize(dm->coordinates[0].xl, bs));
@@ -976,8 +977,8 @@ PetscErrorCode DMGetBoundingBox(DM dm, PetscReal gmin[], PetscReal gmax[])
   PetscCall(DMGetCoordinateDim(dm, &cdim));
   PetscCall(PetscMPIIntCast(cdim, &count));
   PetscCall(DMGetLocalBoundingBox(dm, lmin, lmax));
-  if (gmin) PetscCall(MPIU_Allreduce(lmin, gmin, count, MPIU_REAL, MPIU_MIN, PetscObjectComm((PetscObject)dm)));
-  if (gmax) PetscCall(MPIU_Allreduce(lmax, gmax, count, MPIU_REAL, MPIU_MAX, PetscObjectComm((PetscObject)dm)));
+  if (gmin) PetscCallMPI(MPIU_Allreduce(lmin, gmin, count, MPIU_REAL, MPIU_MIN, PetscObjectComm((PetscObject)dm)));
+  if (gmax) PetscCallMPI(MPIU_Allreduce(lmax, gmax, count, MPIU_REAL, MPIU_MAX, PetscObjectComm((PetscObject)dm)));
   PetscCall(DMGetPeriodicity(dm, NULL, &Lstart, &L));
   if (L) {
     for (PetscInt d = 0; d < cdim; ++d)
@@ -1005,7 +1006,7 @@ static PetscErrorCode DMCreateAffineCoordinates_Internal(DM dm)
   if (cEnd > cStart) PetscCall(DMPlexGetCellType(dm, cStart, &ct));
   else ct = DM_POLYTOPE_UNKNOWN;
   gct = (PetscInt)ct;
-  PetscCall(MPIU_Allreduce(MPI_IN_PLACE, &gct, 1, MPIU_INT, MPI_MIN, PetscObjectComm((PetscObject)dm)));
+  PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &gct, 1, MPIU_INT, MPI_MIN, PetscObjectComm((PetscObject)dm)));
   ct = (DMPolytopeType)gct;
   // Work around current bug in PetscDualSpaceSetUp_Lagrange()
   //   Can be seen in plex_tutorials-ex10_1
@@ -1036,6 +1037,11 @@ PetscErrorCode DMGetCoordinateDegree_Internal(DM dm, PetscInt *degree)
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
+static void evaluate_coordinates(PetscInt dim, PetscInt Nf, PetscInt NfAux, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[], const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[], PetscReal t, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar xnew[])
+{
+  for (PetscInt i = 0; i < dim; i++) xnew[i] = x[i];
+}
+
 /*@
   DMSetCoordinateDisc - Set a coordinate space
 
@@ -1062,7 +1068,6 @@ PetscErrorCode DMSetCoordinateDisc(DM dm, PetscFE disc, PetscBool project)
   DM           cdmOld, cdmNew;
   PetscFE      discOld;
   PetscClassId classid;
-  Vec          coordsOld, coordsNew;
   PetscBool    same_space = PETSC_TRUE;
   const char  *prefix;
 
@@ -1108,26 +1113,54 @@ PetscErrorCode DMSetCoordinateDisc(DM dm, PetscFE disc, PetscBool project)
     PetscCall(DMGetDS(cdmNew, &nds));
     PetscCall(PetscDSCopyConstants(ds, nds));
   }
+  if (dm->setfromoptionscalled) PetscCall(DMSetFromOptions(cdmNew));
+  if (project) {
+    Vec     coordsOld, coordsNew;
+    PetscSF isoperiodic_sf = NULL;
+
+    PetscCall(DMGetIsoperiodicPointSF_Internal(dm, &isoperiodic_sf));
+    if (isoperiodic_sf) { // Isoperiodicity requires projecting the local coordinates
+      PetscCall(DMGetCoordinatesLocal(dm, &coordsOld));
+      PetscCall(DMCreateLocalVector(cdmNew, &coordsNew));
+      PetscCall(PetscObjectSetName((PetscObject)coordsNew, "coordinates"));
+      if (same_space) {
+        // Need to copy so that the new vector has the right dm
+        PetscCall(VecCopy(coordsOld, coordsNew));
+      } else {
+        void (*funcs[])(PetscInt, PetscInt, PetscInt, const PetscInt[], const PetscInt[], const PetscScalar[], const PetscScalar[], const PetscScalar[], const PetscInt[], const PetscInt[], const PetscScalar[], const PetscScalar[], const PetscScalar[], PetscReal, const PetscReal[], PetscInt, const PetscScalar[], PetscScalar[]) = {evaluate_coordinates};
+
+        // We can't call DMProjectField directly because it depends on KSP for DMGlobalToLocalSolve(), but we can use the core strategy
+        PetscCall(DMSetCoordinateDM(cdmNew, cdmOld));
+        // See DMPlexRemapGeometry() for a similar pattern handling the coordinate field
+        DMField cf;
+        PetscCall(DMGetCoordinateField(dm, &cf));
+        cdmNew->coordinates[0].field = cf;
+        PetscCall(DMProjectFieldLocal(cdmNew, 0.0, NULL, funcs, INSERT_VALUES, coordsNew));
+        cdmNew->coordinates[0].field = NULL;
+        PetscCall(DMSetCoordinateDM(cdmNew, NULL));
+      }
+      PetscCall(DMSetCoordinatesLocal(dm, coordsNew));
+      PetscCall(VecDestroy(&coordsNew));
+    } else {
+      PetscCall(DMGetCoordinates(dm, &coordsOld));
+      PetscCall(DMCreateGlobalVector(cdmNew, &coordsNew));
+      if (same_space) {
+        // Need to copy so that the new vector has the right dm
+        PetscCall(VecCopy(coordsOld, coordsNew));
+      } else {
+        Mat In;
+
+        PetscCall(DMCreateInterpolation(cdmOld, cdmNew, &In, NULL));
+        PetscCall(MatMult(In, coordsOld, coordsNew));
+        PetscCall(MatDestroy(&In));
+      }
+      PetscCall(DMSetCoordinates(dm, coordsNew));
+      PetscCall(VecDestroy(&coordsNew));
+    }
+  }
   if (cdmOld->periodic.setup) {
     cdmNew->periodic.setup = cdmOld->periodic.setup;
     PetscCall(cdmNew->periodic.setup(cdmNew));
-  }
-  if (dm->setfromoptionscalled) PetscCall(DMSetFromOptions(cdmNew));
-  if (project) {
-    PetscCall(DMGetCoordinates(dm, &coordsOld));
-    PetscCall(DMCreateGlobalVector(cdmNew, &coordsNew));
-    if (same_space) {
-      // Need to copy so that the new vector has the right dm
-      PetscCall(VecCopy(coordsOld, coordsNew));
-    } else {
-      Mat In;
-
-      PetscCall(DMCreateInterpolation(cdmOld, cdmNew, &In, NULL));
-      PetscCall(MatMult(In, coordsOld, coordsNew));
-      PetscCall(MatDestroy(&In));
-    }
-    PetscCall(DMSetCoordinates(dm, coordsNew));
-    PetscCall(VecDestroy(&coordsNew));
   }
   /* Set new coordinate structures */
   PetscCall(DMSetCoordinateField(dm, NULL));

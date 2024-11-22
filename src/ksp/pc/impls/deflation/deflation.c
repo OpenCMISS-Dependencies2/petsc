@@ -469,7 +469,7 @@ static PetscErrorCode PCSetUp_Deflation(PC pc)
   PetscCall(PetscObjectGetComm((PetscObject)pc, &comm));
   PetscCall(PCGetOperators(pc, NULL, &Amat));
   if (!def->lvl && !def->prefix) PetscCall(PCGetOptionsPrefix(pc, &def->prefix));
-  if (def->lvl) PetscCall(PetscSNPrintf(prefix, sizeof(prefix), "%d_", (int)def->lvl));
+  if (def->lvl) PetscCall(PetscSNPrintf(prefix, sizeof(prefix), "%" PetscInt_FMT "_", def->lvl));
 
   /* compute a deflation space */
   if (def->W || def->Wt) {
@@ -547,13 +547,13 @@ static PetscErrorCode PCSetUp_Deflation(PC pc)
   /* assemble WtA */
   if (!def->WtA) {
     if (def->Wt) {
-      PetscCall(MatMatMult(def->Wt, Amat, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &def->WtA));
+      PetscCall(MatMatMult(def->Wt, Amat, MAT_INITIAL_MATRIX, PETSC_CURRENT, &def->WtA));
     } else {
 #if defined(PETSC_USE_COMPLEX)
       PetscCall(MatHermitianTranspose(def->W, MAT_INITIAL_MATRIX, &def->Wt));
-      PetscCall(MatMatMult(def->Wt, Amat, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &def->WtA));
+      PetscCall(MatMatMult(def->Wt, Amat, MAT_INITIAL_MATRIX, PETSC_CURRENT, &def->WtA));
 #else
-      PetscCall(MatTransposeMatMult(def->W, Amat, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &def->WtA));
+      PetscCall(MatTransposeMatMult(def->W, Amat, MAT_INITIAL_MATRIX, PETSC_CURRENT, &def->WtA));
 #endif
     }
   }
@@ -561,7 +561,7 @@ static PetscErrorCode PCSetUp_Deflation(PC pc)
   if (!def->WtAWinv) {
     PetscCall(MatGetSize(def->W, NULL, &m));
     if (!def->WtAW) {
-      PetscCall(MatMatMult(def->WtA, def->W, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &def->WtAW));
+      PetscCall(MatMatMult(def->WtA, def->W, MAT_INITIAL_MATRIX, PETSC_CURRENT, &def->WtAW));
       /* TODO create MatInheritOption(Mat,MatOption) */
       PetscCall(MatIsSPDKnown(Amat, &isset, &flgspd));
       if (isset) PetscCall(MatSetOption(def->WtAW, MAT_SPD, flgspd));

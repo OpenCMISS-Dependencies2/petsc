@@ -202,16 +202,16 @@ PetscErrorCode PCNNCreateCoarseMatrix(PC pc)
   PetscScalar  *mat;    /* Sub-matrix with this subdomain's contribution to the coarse matrix             */
   PetscScalar **DZ_OUT; /* proc[k].DZ_OUT[i][] = bit of vector to be sent from processor k to processor i */
 
-  /* aliasing some names */
   PC_IS        *pcis     = (PC_IS *)pc->data;
   PC_NN        *pcnn     = (PC_NN *)pc->data;
-  PetscInt      n_neigh  = pcis->n_neigh;
   PetscInt     *neigh    = pcis->neigh;
   PetscInt     *n_shared = pcis->n_shared;
   PetscInt    **shared   = pcis->shared;
+  PetscMPIInt   n_neigh;
   PetscScalar **DZ_IN; /* Must be initialized after memory allocation. */
 
   PetscFunctionBegin;
+  PetscCall(PetscMPIIntCast(pcis->n_neigh, &n_neigh));
   /* Allocate memory for mat (the +1 is to handle the case n_neigh equal to zero) */
   PetscCall(PetscMalloc1(n_neigh * n_neigh + 1, &mat));
 
@@ -247,8 +247,11 @@ PetscErrorCode PCNNCreateCoarseMatrix(PC pc)
     PetscCall(PetscObjectGetNewTag((PetscObject)pc, &tag));
     PetscCall(PetscMalloc2(n_neigh + 1, &send_request, n_neigh + 1, &recv_request));
     for (i = 1; i < n_neigh; i++) {
-      PetscCallMPI(MPI_Isend((void *)DZ_OUT[i], n_shared[i], MPIU_SCALAR, neigh[i], tag, PetscObjectComm((PetscObject)pc), &send_request[i]));
-      PetscCallMPI(MPI_Irecv((void *)DZ_IN[i], n_shared[i], MPIU_SCALAR, neigh[i], tag, PetscObjectComm((PetscObject)pc), &recv_request[i]));
+      PetscMPIInt nn;
+
+      PetscCall(PetscMPIIntCast(neigh[i], &nn));
+      PetscCallMPI(MPIU_Isend(DZ_OUT[i], n_shared[i], MPIU_SCALAR, nn, tag, PetscObjectComm((PetscObject)pc), &send_request[i]));
+      PetscCallMPI(MPIU_Irecv(DZ_IN[i], n_shared[i], MPIU_SCALAR, nn, tag, PetscObjectComm((PetscObject)pc), &recv_request[i]));
     }
   }
 
@@ -326,7 +329,7 @@ PetscErrorCode PCNNCreateCoarseMatrix(PC pc)
     if (pcis->pure_neumann) { /* does NOT zero the row; create an empty index set. The reason is that MatZeroRows() is collective. */
       PetscCall(MatZeroRows(pcnn->coarse_mat, 0, NULL, one, NULL, NULL));
     } else { /* here it DOES zero the row, since it's not a floating subdomain. */
-      PetscInt row = (PetscInt)rank;
+      PetscInt row = rank;
       PetscCall(MatZeroRows(pcnn->coarse_mat, 1, &row, one, NULL, NULL));
     }
   }
@@ -559,9 +562,7 @@ PetscErrorCode PCNNBalancing(PC pc, Vec r, Vec u, Vec z, Vec vec1_B, Vec vec2_B,
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-/*                                                     */
 /*  From now on, "footnotes" (or "historical notes").  */
-/*                                                     */
 /*
    Historical note 01
 

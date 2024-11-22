@@ -704,7 +704,7 @@ static PetscErrorCode TestFVGrad(DM dm, AppCtx *user)
       FrobDiff = PetscSqrtReal(FrobDiff);
       maxDiff  = PetscMax(maxDiff, FrobDiff);
     }
-    PetscCall(MPIU_Allreduce(&maxDiff, &maxDiffGlob, 1, MPIU_REAL, MPIU_MAX, comm));
+    PetscCallMPI(MPIU_Allreduce(&maxDiff, &maxDiffGlob, 1, MPIU_REAL, MPIU_MAX, comm));
     allVecMaxDiff = PetscMax(allVecMaxDiff, maxDiffGlob);
     PetscCall(VecRestoreArrayRead(locGrad, &gradArray));
     PetscCall(DMRestoreLocalVector(dmfv, &locX));
@@ -813,6 +813,7 @@ static PetscErrorCode CheckInterpolation(DM dm, PetscBool checkRestrict, PetscIn
   PetscCall(DMGetDimension(dm, &dim));
   PetscCall(DMRefine(dm, comm, &rdm));
   PetscCall(DMSetCoarseDM(rdm, dm));
+  PetscCall(DMGetCoordinatesLocalSetUp(rdm));
   PetscCall(DMPlexSetRegularRefinement(rdm, user->convRefine));
   if (user->tree) {
     DM refTree;
@@ -857,6 +858,7 @@ static PetscErrorCode CheckInterpolation(DM dm, PetscBool checkRestrict, PetscIn
     PetscCall(VecPointwiseMult(fu, scaling, fu));
   } else PetscCall(MatInterpolate(Interp, iu, fu));
   /* Compare approximation to exact in L_2 */
+  PetscCall(DMGetCoordinatesLocalSetUp(fdm));
   PetscCall(DMComputeL2Diff(fdm, 0.0, exactFuncs, exactCtxs, fu, &error));
   PetscCall(DMComputeL2GradientDiff(fdm, 0.0, exactFuncDers, exactCtxs, fu, n, &errorDer));
   /* Report result */
@@ -904,9 +906,9 @@ static PetscErrorCode CheckConvergence(DM dm, PetscInt Nr, AppCtx *user)
       PetscCall(SetupSection(rdm, user));
       PetscCall(ComputeError(rdm, exactFuncs, exactFuncDers, exactCtxs, &error, &errorDer, user));
       p = PetscLog2Real(errorOld / error);
-      PetscCall(PetscPrintf(PetscObjectComm((PetscObject)dm), "Function   convergence rate at refinement %" PetscInt_FMT ": %.2f\n", r, (double)p));
+      PetscCall(PetscPrintf(PetscObjectComm((PetscObject)dm), "Function   convergence rate at refinement %" PetscInt_FMT ": %.2f\n", r, p));
       p = PetscLog2Real(errorDerOld / errorDer);
-      PetscCall(PetscPrintf(PetscObjectComm((PetscObject)dm), "Derivative convergence rate at refinement %" PetscInt_FMT ": %.2f\n", r, (double)p));
+      PetscCall(PetscPrintf(PetscObjectComm((PetscObject)dm), "Derivative convergence rate at refinement %" PetscInt_FMT ": %.2f\n", r, p));
       PetscCall(DMDestroy(&odm));
       odm         = rdm;
       errorOld    = error;
@@ -926,10 +928,10 @@ static PetscErrorCode CheckConvergence(DM dm, PetscInt Nr, AppCtx *user)
       len = cEnd - cStart;
       rel = error / errorOld;
       p   = PetscLogReal(rel) / PetscLogReal(lenOld / len);
-      PetscCall(PetscPrintf(PetscObjectComm((PetscObject)dm), "Function   convergence rate at coarsening %" PetscInt_FMT ": %.2f\n", c, (double)p));
+      PetscCall(PetscPrintf(PetscObjectComm((PetscObject)dm), "Function   convergence rate at coarsening %" PetscInt_FMT ": %.2f\n", c, p));
       rel = errorDer / errorDerOld;
       p   = PetscLogReal(rel) / PetscLogReal(lenOld / len);
-      PetscCall(PetscPrintf(PetscObjectComm((PetscObject)dm), "Derivative convergence rate at coarsening %" PetscInt_FMT ": %.2f\n", c, (double)p));
+      PetscCall(PetscPrintf(PetscObjectComm((PetscObject)dm), "Derivative convergence rate at coarsening %" PetscInt_FMT ": %.2f\n", c, p));
       PetscCall(DMDestroy(&odm));
       odm         = cdm;
       errorOld    = error;
@@ -1095,15 +1097,15 @@ int main(int argc, char **argv)
   # 2D Q_1 on a quadrilaterial DA
   test:
     suffix: q1_2d_da_0
-    requires: broken
+    TODO: broken
     args: -use_da 1 -petscspace_degree 1 -qorder 1 -convergence
   test:
     suffix: q1_2d_da_1
-    requires: broken
+    TODO: broken
     args: -use_da 1 -petscspace_degree 1 -qorder 1 -porder 1
   test:
     suffix: q1_2d_da_2
-    requires: broken
+    TODO: broken
     args: -use_da 1 -petscspace_degree 1 -qorder 1 -porder 2
 
   # 2D Q_1 on a quadrilaterial Plex
@@ -1131,6 +1133,10 @@ int main(int argc, char **argv)
   test:
     suffix: q1_2d_plex_7
     args: -dm_plex_simplex 0 -petscspace_degree 1 -petscspace_type tensor -qorder 1 -porder 2 -non_affine_coords -convergence
+  test:
+    suffix: q1_2d_plex_8
+    requires: triangle
+    args: -dist_dm_refine 1 -dist_dm_plex_transform_type refine_tobox -petscspace_degree 1 -qorder 1 -convergence
 
   # 2D Q_2 on a quadrilaterial
   test:

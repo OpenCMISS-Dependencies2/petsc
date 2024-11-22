@@ -187,7 +187,7 @@ PetscErrorCode CreateMesh(MPI_Comm comm, AppCtx *user, DM *dm)
       PetscCall(DMGetPointSF(distributedMesh, &sf));
       PetscCall(PetscSFSetUp(sf));
       PetscCall(DMGetNeighbors(distributedMesh, &nranks, NULL));
-      PetscCall(MPIU_Allreduce(MPI_IN_PLACE, &nranks, 1, MPIU_INT, MPI_MIN, PetscObjectComm((PetscObject)*dm)));
+      PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &nranks, 1, MPIU_INT, MPI_MIN, PetscObjectComm((PetscObject)*dm)));
       PetscCall(PetscViewerASCIIPrintf(PETSC_VIEWER_STDOUT_(PetscObjectComm((PetscObject)*dm)), "Minimum number of neighbors: %" PetscInt_FMT "\n", nranks));
       PetscCall(DMDestroy(dm));
       *dm = distributedMesh;
@@ -420,6 +420,10 @@ int main(int argc, char **argv)
       requires: !single
       args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square.msh
     test:
+      suffix: gmsh_1_box_label
+      requires: !single
+      args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square.msh -dm_plex_box_label
+    test:
       suffix: gmsh_2
       requires: !single
       args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square_bin.msh
@@ -605,25 +609,28 @@ int main(int argc, char **argv)
       args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/gmsh-3d-binary-64.msh -viewer_binary_mpiio
 
   # Fluent mesh reader tests
-  # TODO: Geometry checks fail
   test:
     suffix: fluent_0
     requires: !complex
-    args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square.cas -dm_view -final_diagnostics 0
+    args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square.cas -dm_view
   test:
     suffix: fluent_1
     nsize: 3
     requires: !complex
-    args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square.cas -dist_dm_distribute -petscpartitioner_type simple -dm_view -final_diagnostics 0
+    args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square.cas -dist_dm_distribute -petscpartitioner_type simple -dm_view
   test:
     suffix: fluent_2
     requires: !complex
-    args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/cube_5tets_ascii.cas -dm_view -final_diagnostics 0
+    args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/cube_5tets_ascii.cas -dm_view
   test:
     suffix: fluent_3
     requires: !complex
     TODO: Fails on non-linux: fseek(), fileno() ? https://gitlab.com/petsc/petsc/merge_requests/2206#note_238166382
     args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/cube_5tets.cas -dm_view -final_diagnostics 0
+  test:
+    suffix: fluent_4
+    requires: !complex defined(PETSC_USE_INFO)
+    args: -dm_plex_filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/testcase3D.cas -info :viewer -dm_view
 
   # Test shape quality
   test:

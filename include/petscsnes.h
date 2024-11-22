@@ -7,17 +7,9 @@
 #include <petscdmtypes.h>
 #include <petscfvtypes.h>
 #include <petscdmdatypes.h>
+#include <petscsnestypes.h>
 
 /* SUBMANSEC = SNES */
-
-/*S
-   SNES - Abstract PETSc object that manages nonlinear solves
-
-   Level: beginner
-
-.seealso: [](doc_nonlinsolve), [](ch_snes), `SNESCreate()`, `SNESSetType()`, `SNESType`, `TS`, `SNES`, `KSP`, `PC`, `SNESDestroy()`
-S*/
-typedef struct _p_SNES *SNES;
 
 /*J
    SNESType - String with the name of a PETSc `SNES` method.
@@ -48,6 +40,7 @@ typedef const char *SNESType;
 #define SNESASPIN            "aspin"
 #define SNESCOMPOSITE        "composite"
 #define SNESPATCH            "patch"
+#define SNESNEWTONAL         "newtonal"
 
 /* Logging support */
 PETSC_EXTERN PetscClassId SNES_CLASSID;
@@ -57,11 +50,12 @@ PETSC_EXTERN PetscErrorCode SNESInitializePackage(void);
 PETSC_EXTERN PetscErrorCode SNESFinalizePackage(void);
 
 PETSC_EXTERN PetscErrorCode SNESCreate(MPI_Comm, SNES *);
+PETSC_EXTERN PetscErrorCode SNESParametersInitialize(SNES);
 PETSC_EXTERN PetscErrorCode SNESReset(SNES);
 PETSC_EXTERN PetscErrorCode SNESDestroy(SNES *);
 PETSC_EXTERN PetscErrorCode SNESSetType(SNES, SNESType);
 PETSC_EXTERN PetscErrorCode SNESMonitor(SNES, PetscInt, PetscReal);
-PETSC_EXTERN PetscErrorCode SNESMonitorSet(SNES, PetscErrorCode (*)(SNES, PetscInt, PetscReal, void *), void *, PetscErrorCode (*)(void **));
+PETSC_EXTERN PetscErrorCode SNESMonitorSet(SNES, PetscErrorCode (*)(SNES, PetscInt, PetscReal, void *), void *, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode SNESMonitorSetFromOptions(SNES, const char[], const char[], const char[], PetscErrorCode (*)(SNES, PetscInt, PetscReal, PetscViewerAndFormat *), PetscErrorCode (*)(SNES, PetscViewerAndFormat *));
 PETSC_EXTERN PetscErrorCode SNESMonitorCancel(SNES);
 PETSC_EXTERN PetscErrorCode SNESMonitorSAWs(SNES, PetscInt, PetscReal, void *);
@@ -89,7 +83,7 @@ PETSC_EXTERN PetscErrorCode SNESGetSolutionUpdate(SNES, Vec *);
 PETSC_EXTERN PetscErrorCode SNESGetRhs(SNES, Vec *);
 PETSC_EXTERN PetscErrorCode SNESView(SNES, PetscViewer);
 PETSC_EXTERN PetscErrorCode SNESLoad(SNES, PetscViewer);
-PETSC_EXTERN PetscErrorCode SNESConvergedReasonViewSet(SNES, PetscErrorCode (*)(SNES, void *), void *, PetscErrorCode (*)(void **));
+PETSC_EXTERN PetscErrorCode SNESConvergedReasonViewSet(SNES, PetscErrorCode (*)(SNES, void *), void *, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode SNESViewFromOptions(SNES, PetscObject, const char[]);
 PETSC_EXTERN PetscErrorCode SNESConvergedReasonView(SNES, PetscViewer);
 PETSC_EXTERN PetscErrorCode SNESConvergedReasonViewFromOptions(SNES);
@@ -144,7 +138,6 @@ PETSC_EXTERN PetscErrorCode SNESSetTolerances(SNES, PetscReal, PetscReal, PetscR
 PETSC_EXTERN PetscErrorCode SNESSetDivergenceTolerance(SNES, PetscReal);
 PETSC_EXTERN PetscErrorCode SNESGetTolerances(SNES, PetscReal *, PetscReal *, PetscReal *, PetscInt *, PetscInt *);
 PETSC_EXTERN PetscErrorCode SNESGetDivergenceTolerance(SNES, PetscReal *);
-PETSC_EXTERN PetscErrorCode SNESSetTrustRegionTolerance(SNES, PetscReal);
 PETSC_EXTERN PetscErrorCode SNESGetForceIteration(SNES, PetscBool *);
 PETSC_EXTERN PetscErrorCode SNESSetForceIteration(SNES, PetscBool);
 PETSC_EXTERN PetscErrorCode SNESGetIterationNumber(SNES, PetscInt *);
@@ -201,6 +194,12 @@ PETSC_EXTERN const char *const SNESNewtonTRQNTypes[];
 
 PETSC_EXTERN PetscErrorCode SNESNewtonTRSetQNType(SNES, SNESNewtonTRQNType);
 
+PETSC_EXTERN PETSC_DEPRECATED_FUNCTION(3, 22, 0, "SNESNewtonTRSetTolerances()", ) PetscErrorCode SNESSetTrustRegionTolerance(SNES, PetscReal);
+PETSC_EXTERN PetscErrorCode SNESNewtonTRSetTolerances(SNES, PetscReal, PetscReal, PetscReal);
+PETSC_EXTERN PetscErrorCode SNESNewtonTRGetTolerances(SNES, PetscReal *, PetscReal *, PetscReal *);
+PETSC_EXTERN PetscErrorCode SNESNewtonTRSetUpdateParameters(SNES, PetscReal, PetscReal, PetscReal, PetscReal, PetscReal);
+PETSC_EXTERN PetscErrorCode SNESNewtonTRGetUpdateParameters(SNES, PetscReal *, PetscReal *, PetscReal *, PetscReal *, PetscReal *);
+
 PETSC_EXTERN PetscErrorCode SNESNewtonTRDCGetRhoFlag(SNES, PetscBool *);
 PETSC_EXTERN PetscErrorCode SNESNewtonTRDCSetPreCheck(SNES, PetscErrorCode (*)(SNES, Vec, Vec, PetscBool *, void *), void *ctx);
 PETSC_EXTERN PetscErrorCode SNESNewtonTRDCGetPreCheck(SNES, PetscErrorCode (**)(SNES, Vec, Vec, PetscBool *, void *), void **ctx);
@@ -226,6 +225,7 @@ PETSC_EXTERN PetscErrorCode SNESGetLinearSolveFailures(SNES, PetscInt *);
 PETSC_EXTERN PetscErrorCode SNESSetMaxLinearSolveFailures(SNES, PetscInt);
 PETSC_EXTERN PetscErrorCode SNESGetMaxLinearSolveFailures(SNES, PetscInt *);
 PETSC_EXTERN PetscErrorCode SNESSetCountersReset(SNES, PetscBool);
+PETSC_EXTERN PetscErrorCode SNESResetCounters(SNES);
 
 PETSC_EXTERN PetscErrorCode SNESKSPSetUseEW(SNES, PetscBool);
 PETSC_EXTERN PetscErrorCode SNESKSPGetUseEW(SNES, PetscBool *);
@@ -237,7 +237,7 @@ PETSC_EXTERN PetscErrorCode SNESMonitorLGRange(SNES, PetscInt, PetscReal, void *
 
 PETSC_EXTERN PetscErrorCode SNESSetApplicationContext(SNES, void *);
 PETSC_EXTERN PetscErrorCode SNESGetApplicationContext(SNES, void *);
-PETSC_EXTERN PetscErrorCode SNESSetComputeApplicationContext(SNES, PetscErrorCode (*)(SNES, void **), PetscErrorCode (*)(void **));
+PETSC_EXTERN PetscErrorCode SNESSetComputeApplicationContext(SNES, PetscErrorCode (*)(SNES, void **), PetscCtxDestroyFn *);
 
 PETSC_EXTERN PetscErrorCode SNESPythonSetType(SNES, const char[]);
 PETSC_EXTERN PetscErrorCode SNESPythonGetType(SNES, const char *[]);
@@ -257,6 +257,7 @@ PETSC_EXTERN PetscErrorCode SNESGetCheckJacobianDomainError(SNES, PetscBool *);
 +  `SNES_CONVERGED_FNORM_ABS`      - 2-norm(F) <= abstol
 .  `SNES_CONVERGED_FNORM_RELATIVE` - 2-norm(F) <= rtol*2-norm(F(x_0)) where x_0 is the initial guess
 .  `SNES_CONVERGED_SNORM_RELATIVE` - The 2-norm of the last step <= stol * 2-norm(x) where x is the current
+.  `SNES_CONVERGED_USER`           - The user has indicated convergence for an arbitrary reason
 .  `SNES_DIVERGED_FUNCTION_COUNT`  - The user provided function has been called more times than the maximum set in `SNESSetTolerances()`
 .  `SNES_DIVERGED_DTOL`            - The norm of the function has increased by a factor of divtol set with `SNESSetDivergenceTolerance()`
 .  `SNES_DIVERGED_FNORM_NAN`       - the 2-norm of the current function evaluation is not-a-number (NaN), this
@@ -264,7 +265,8 @@ PETSC_EXTERN PetscErrorCode SNESGetCheckJacobianDomainError(SNES, PetscBool *);
 .  `SNES_DIVERGED_MAX_IT`          - `SNESSolve()` has reached the maximum number of iterations requested
 .  `SNES_DIVERGED_LINE_SEARCH`     - The line search has failed. This only occurs for `SNES` solvers that use a line search
 .  `SNES_DIVERGED_LOCAL_MIN`       - the algorithm seems to have stagnated at a local minimum that is not zero.
--  `SNES_CONERGED_ITERATING`       - this only occurs if `SNESGetConvergedReason()` is called during the `SNESSolve()`
+.  `SNES_DIVERGED_USER`            - The user has indicated divergence for an arbitrary reason
+-  `SNES_CONVERGED_ITERATING       - this only occurs if `SNESGetConvergedReason()` is called during the `SNESSolve()`
 
    Level: beginner
 
@@ -307,8 +309,9 @@ typedef enum {                       /* converged */
   SNES_CONVERGED_FNORM_RELATIVE = 3, /* ||F|| < rtol*||F_initial|| */
   SNES_CONVERGED_SNORM_RELATIVE = 4, /* Newton computed step size small; || delta x || < stol || x ||*/
   SNES_CONVERGED_ITS            = 5, /* maximum iterations reached */
-  SNES_BREAKOUT_INNER_ITER      = 6, /* Flag to break out of inner loop after checking custom convergence. */
-                                     /* it is used in multi-phase flow when state changes */
+  SNES_BREAKOUT_INNER_ITER      = 6, /* Flag to break out of inner loop after checking custom convergence.
+                                        It is used in multi-phase flow when state changes */
+  SNES_CONVERGED_USER           = 7, /* The user has indicated convergence for an arbitrary reason */
   /* diverged */
   SNES_DIVERGED_FUNCTION_DOMAIN      = -1, /* the new x location passed the function is not in the domain of F */
   SNES_DIVERGED_FUNCTION_COUNT       = -2,
@@ -322,6 +325,7 @@ typedef enum {                       /* converged */
   SNES_DIVERGED_JACOBIAN_DOMAIN      = -10, /* Jacobian calculation does not make sense */
   SNES_DIVERGED_TR_DELTA             = -11,
   SNES_CONVERGED_TR_DELTA_DEPRECATED = -11,
+  SNES_DIVERGED_USER                 = -12, /* The user has indicated divergence for an arbitrary reason */
 
   SNES_CONVERGED_ITERATING = 0
 } SNESConvergedReason;
@@ -861,7 +865,7 @@ PETSC_EXTERN PetscErrorCode SNESLineSearchComputeNorms(SNESLineSearch);
 PETSC_EXTERN PetscErrorCode SNESLineSearchSetComputeNorms(SNESLineSearch, PetscBool);
 
 PETSC_EXTERN PetscErrorCode SNESLineSearchMonitor(SNESLineSearch);
-PETSC_EXTERN PetscErrorCode SNESLineSearchMonitorSet(SNESLineSearch, PetscErrorCode (*)(SNESLineSearch, void *), void *, PetscErrorCode (*)(void **));
+PETSC_EXTERN PetscErrorCode SNESLineSearchMonitorSet(SNESLineSearch, PetscErrorCode (*)(SNESLineSearch, void *), void *, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode SNESLineSearchMonitorSetFromOptions(SNESLineSearch, const char[], const char[], const char[], PetscErrorCode (*)(SNESLineSearch, PetscViewerAndFormat *), PetscErrorCode (*)(SNESLineSearch, PetscViewerAndFormat *));
 PETSC_EXTERN PetscErrorCode SNESLineSearchMonitorCancel(SNESLineSearch);
 PETSC_EXTERN PetscErrorCode SNESLineSearchSetDefaultMonitor(SNESLineSearch, PetscViewer);
@@ -937,13 +941,13 @@ PETSC_DEPRECATED_FUNCTION(3, 4, 0, "SNESSetLineSearch()", ) static inline PetscE
 PETSC_EXTERN PetscErrorCode SNESSetUpMatrices(SNES);
 PETSC_EXTERN PetscErrorCode DMSNESSetFunction(DM, SNESFunctionFn *, void *);
 PETSC_EXTERN PetscErrorCode DMSNESGetFunction(DM, SNESFunctionFn **, void **);
-PETSC_EXTERN PetscErrorCode DMSNESSetFunctionContextDestroy(DM, PetscErrorCode (*)(void *));
+PETSC_EXTERN PetscErrorCode DMSNESSetFunctionContextDestroy(DM, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode DMSNESSetMFFunction(DM, SNESFunctionFn *, void *);
 PETSC_EXTERN PetscErrorCode DMSNESSetNGS(DM, SNESNGSFn *, void *);
 PETSC_EXTERN PetscErrorCode DMSNESGetNGS(DM, SNESNGSFn **, void **);
 PETSC_EXTERN PetscErrorCode DMSNESSetJacobian(DM, SNESJacobianFn *, void *);
 PETSC_EXTERN PetscErrorCode DMSNESGetJacobian(DM, SNESJacobianFn **, void **);
-PETSC_EXTERN PetscErrorCode DMSNESSetJacobianContextDestroy(DM, PetscErrorCode (*)(void *));
+PETSC_EXTERN PetscErrorCode DMSNESSetJacobianContextDestroy(DM, PetscCtxDestroyFn *);
 PETSC_EXTERN PetscErrorCode DMSNESSetPicard(DM, SNESFunctionFn *, SNESJacobianFn *, void *);
 PETSC_EXTERN PetscErrorCode DMSNESGetPicard(DM, SNESFunctionFn **, SNESJacobianFn **, void **);
 PETSC_EXTERN PetscErrorCode DMSNESSetObjective(DM, SNESObjectiveFn *, void *);
@@ -1291,3 +1295,34 @@ PETSC_EXTERN PetscErrorCode DMSNESCheckJacobian(SNES, DM, Vec, PetscReal, PetscB
 PETSC_EXTERN PetscErrorCode DMSNESCheckFromOptions(SNES, Vec);
 PETSC_EXTERN PetscErrorCode DMSNESComputeJacobianAction(DM, Vec, Vec, Vec, void *);
 PETSC_EXTERN PetscErrorCode DMSNESCreateJacobianMF(DM, Vec, void *, Mat *);
+
+PETSC_EXTERN PetscErrorCode SNESNewtonALSetFunction(SNES, SNESFunctionFn *, void *ctx);
+PETSC_EXTERN PetscErrorCode SNESNewtonALGetFunction(SNES, SNESFunctionFn **, void **ctx);
+PETSC_EXTERN PetscErrorCode SNESNewtonALComputeFunction(SNES, Vec, Vec);
+PETSC_EXTERN PetscErrorCode SNESNewtonALGetLoadParameter(SNES, PetscReal *);
+
+/*MC
+   SNESNewtonALCorrectionType - the approach used by `SNESNEWTONAL` to determine
+   the correction to the current increment. While the exact correction satisfies
+   the constraint surface at every iteration, it also requires solving a quadratic
+   equation which may not have real roots. Conversely, the normal correction is more
+   efficient and always yields a real correction and is the default.
+
+   Values:
++   `SNES_NEWTONAL_CORRECTION_EXACT` - choose the correction which exactly satisfies the constraint
+-   `SNES_NEWTONAL_CORRECTION_NORMAL` - choose the correction in the updated normal hyper-surface to the constraint surface
+
+   Options Database Key:
+. -snes_newtonal_correction_type <exact> - select type from <exact,normal>
+
+   Level: intermediate
+
+.seealso: `SNES`, `SNESNEWTONAL`, `SNESNewtonALSetCorrectionType()`
+M*/
+typedef enum {
+  SNES_NEWTONAL_CORRECTION_EXACT  = 0,
+  SNES_NEWTONAL_CORRECTION_NORMAL = 1,
+} SNESNewtonALCorrectionType;
+PETSC_EXTERN const char *const SNESNewtonALCorrectionTypes[];
+
+PETSC_EXTERN PetscErrorCode SNESNewtonALSetCorrectionType(SNES, SNESNewtonALCorrectionType);

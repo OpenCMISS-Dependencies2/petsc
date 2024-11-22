@@ -215,7 +215,7 @@ static PetscErrorCode KSPSolve_PIPEGCR_cycle(KSP ksp)
     for (k = PetscMax(0, i - mi), j = 0; k < i; j++, k++) {
       kdx = k % (pipegcr->mmax + 1);
       betas[j] /= -etas[kdx]; /* betak  /= etak */
-      *eta -= ((PetscReal)(PetscAbsScalar(betas[j]) * PetscAbsScalar(betas[j]))) * etas[kdx];
+      *eta -= PetscAbsScalar(betas[j]) * PetscAbsScalar(betas[j]) * etas[kdx];
       /* etaitmp = -betaik^2 * etak */
     }
     *eta += delta; /* etai    = delta -betaik^2 * etak */
@@ -703,7 +703,7 @@ static PetscErrorCode KSPPIPEGCRSetModifyPC_PIPEGCR(KSP ksp, KSPPIPEGCRModifyPCF
 PetscErrorCode KSPPIPEGCRSetModifyPC(KSP ksp, PetscErrorCode (*function)(KSP ksp, PetscInt n, PetscReal rnorm, void *ctx), void *ctx, PetscErrorCode (*destroy)(void *ctx))
 {
   PetscFunctionBegin;
-  PetscUseMethod(ksp, "KSPPIPEGCRSetModifyPC_C", (KSP, PetscErrorCode(*)(KSP, PetscInt, PetscReal, void *), void *ctx, PetscErrorCode (*)(void *)), (ksp, function, ctx, destroy));
+  PetscUseMethod(ksp, "KSPPIPEGCRSetModifyPC_C", (KSP, PetscErrorCode (*)(KSP, PetscInt, PetscReal, void *), void *ctx, PetscErrorCode (*)(void *)), (ksp, function, ctx, destroy));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

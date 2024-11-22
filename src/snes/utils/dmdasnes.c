@@ -72,7 +72,7 @@ static PetscErrorCode SNESComputeFunction_DMDA(SNES snes, Vec X, Vec F, void *ct
   PetscCall(DMGlobalToLocalBegin(dm, X, INSERT_VALUES, Xloc));
   PetscCall(DMGlobalToLocalEnd(dm, X, INSERT_VALUES, Xloc));
   PetscCall(DMDAGetLocalInfo(dm, &info));
-  rctx = dmdasnes->residuallocalctx ? dmdasnes->residuallocalctx : snes->user;
+  rctx = dmdasnes->residuallocalctx ? dmdasnes->residuallocalctx : snes->ctx;
   switch (dmdasnes->residuallocalimode) {
   case INSERT_VALUES: {
     PetscCall(PetscLogEventBegin(SNES_FunctionEval, snes, X, F, 0));
@@ -131,7 +131,7 @@ static PetscErrorCode SNESComputeObjective_DMDA(SNES snes, Vec X, PetscReal *ob,
   PetscCall(DMGlobalToLocalBegin(dm, X, INSERT_VALUES, Xloc));
   PetscCall(DMGlobalToLocalEnd(dm, X, INSERT_VALUES, Xloc));
   PetscCall(DMDAGetLocalInfo(dm, &info));
-  octx = dmdasnes->objectivelocalctx ? dmdasnes->objectivelocalctx : snes->user;
+  octx = dmdasnes->objectivelocalctx ? dmdasnes->objectivelocalctx : snes->ctx;
   if (dmdasnes->objectivelocalvec) PetscCallBack("SNES DMDA local callback objective", (*dmdasnes->objectivelocalvec)(&info, Xloc, ob, octx));
   else {
     PetscCall(DMDAVecGetArray(dm, Xloc, &x));
@@ -139,7 +139,7 @@ static PetscErrorCode SNESComputeObjective_DMDA(SNES snes, Vec X, PetscReal *ob,
     PetscCall(DMDAVecRestoreArray(dm, Xloc, &x));
   }
   PetscCall(DMRestoreLocalVector(dm, &Xloc));
-  PetscCall(MPIU_Allreduce(MPI_IN_PLACE, ob, 1, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)snes)));
+  PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, ob, 1, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)snes)));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -155,7 +155,7 @@ PETSC_EXTERN PetscErrorCode SNESComputeJacobian_DMDA(SNES snes, Vec X, Mat A, Ma
   PetscFunctionBegin;
   PetscCheck(dmdasnes->residuallocal || dmdasnes->residuallocalvec, PetscObjectComm((PetscObject)snes), PETSC_ERR_PLIB, "Corrupt context");
   PetscCall(SNESGetDM(snes, &dm));
-  jctx = dmdasnes->jacobianlocalctx ? dmdasnes->jacobianlocalctx : snes->user;
+  jctx = dmdasnes->jacobianlocalctx ? dmdasnes->jacobianlocalctx : snes->ctx;
   if (dmdasnes->jacobianlocal || dmdasnes->jacobianlocalvec) {
     PetscCall(DMGetLocalVector(dm, &Xloc));
     PetscCall(DMGlobalToLocalBegin(dm, X, INSERT_VALUES, Xloc));
@@ -178,7 +178,7 @@ PETSC_EXTERN PetscErrorCode SNESComputeJacobian_DMDA(SNES snes, Vec X, Mat A, Ma
       PetscCall(MatFDColoringCreate(B, coloring, &fdcoloring));
       switch (dm->coloringtype) {
       case IS_COLORING_GLOBAL:
-        PetscCall(MatFDColoringSetFunction(fdcoloring, (PetscErrorCode(*)(void))SNESComputeFunction_DMDA, dmdasnes));
+        PetscCall(MatFDColoringSetFunction(fdcoloring, (PetscErrorCode (*)(void))SNESComputeFunction_DMDA, dmdasnes));
         break;
       default:
         SETERRQ(PetscObjectComm((PetscObject)snes), PETSC_ERR_SUP, "No support for coloring type '%s'", ISColoringTypes[dm->coloringtype]);

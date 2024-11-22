@@ -4,9 +4,9 @@
 #include <petsc/private/hashmapi.h>
 #include <petscsf.h>
 
-PetscErrorCode PCBDDCDestroyGraphCandidatesIS(void *ctx)
+PetscErrorCode PCBDDCDestroyGraphCandidatesIS(void **ctx)
 {
-  PCBDDCGraphCandidates cand = (PCBDDCGraphCandidates)ctx;
+  PCBDDCGraphCandidates cand = (PCBDDCGraphCandidates)*ctx;
 
   PetscFunctionBegin;
   for (PetscInt i = 0; i < cand->nfc; i++) PetscCall(ISDestroy(&cand->Faces[i]));
@@ -85,7 +85,7 @@ PetscErrorCode PCBDDCGraphASCIIView(PCBDDCGraph graph, PetscInt verbosity_level,
   PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, "Number of vertices %" PetscInt_FMT "\n", graph->nvtxs));
   PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, "Number of local subdomains %" PetscInt_FMT "\n", graph->n_local_subs ? graph->n_local_subs : 1));
   PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, "Custom minimal size %" PetscInt_FMT "\n", graph->custom_minimal_size));
-  if (graph->maxcount != PETSC_MAX_INT) PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, "Max count %" PetscInt_FMT "\n", graph->maxcount));
+  if (graph->maxcount != PETSC_INT_MAX) PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, "Max count %" PetscInt_FMT "\n", graph->maxcount));
   PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, "Topological two dim? %s (set %s)\n", PetscBools[graph->twodim], PetscBools[graph->twodimset]));
   if (verbosity_level > 2) {
     for (i = 0; i < graph->nvtxs; i++) {
@@ -171,14 +171,14 @@ PetscErrorCode PCBDDCGraphRestoreCandidatesIS(PCBDDCGraph graph, PetscInt *n_fac
   }
   if (n_faces) {
     if (FacesIS) {
-      for (i = 0; i < *n_faces; i++) PetscCall(ISDestroy(&((*FacesIS)[i])));
+      for (i = 0; i < *n_faces; i++) PetscCall(ISDestroy(&(*FacesIS)[i]));
       PetscCall(PetscFree(*FacesIS));
     }
     *n_faces = 0;
   }
   if (n_edges) {
     if (EdgesIS) {
-      for (i = 0; i < *n_edges; i++) PetscCall(ISDestroy(&((*EdgesIS)[i])));
+      for (i = 0; i < *n_edges; i++) PetscCall(ISDestroy(&(*EdgesIS)[i]));
       PetscCall(PetscFree(*EdgesIS));
     }
     *n_edges = 0;
@@ -560,7 +560,7 @@ PetscErrorCode PCBDDCGraphComputeConnectedComponents(PCBDDCGraph graph)
         break;
       }
     }
-    PetscCall(MPIU_Allreduce(&twodim, &graph->twodim, 1, MPIU_BOOL, MPI_LAND, PetscObjectComm((PetscObject)graph->l2gmap)));
+    PetscCallMPI(MPIU_Allreduce(&twodim, &graph->twodim, 1, MPIU_BOOL, MPI_LAND, PetscObjectComm((PetscObject)graph->l2gmap)));
     graph->twodimset = PETSC_TRUE;
   }
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -854,7 +854,7 @@ PetscErrorCode PCBDDCGraphSetUp(PCBDDCGraph graph, PetscInt custom_minimal_size,
 
     PetscCall(ISGetLocalSize(ISForDofs[i], &is_size));
     PetscCall(ISGetBlockSize(ISForDofs[i], &bs));
-    PetscCall(ISGetIndices(ISForDofs[i], (const PetscInt **)&is_indices));
+    PetscCall(ISGetIndices(ISForDofs[i], &is_indices));
     for (j = 0; j < is_size / bs; j++) {
       PetscInt b;
 
@@ -866,26 +866,26 @@ PetscErrorCode PCBDDCGraphSetUp(PCBDDCGraph graph, PetscInt custom_minimal_size,
         }
       }
     }
-    PetscCall(ISRestoreIndices(ISForDofs[i], (const PetscInt **)&is_indices));
+    PetscCall(ISRestoreIndices(ISForDofs[i], &is_indices));
     k += bs;
   }
 
   /* Take into account Neumann nodes */
   if (neumann_is) {
     PetscCall(ISGetLocalSize(neumann_is, &is_size));
-    PetscCall(ISGetIndices(neumann_is, (const PetscInt **)&is_indices));
+    PetscCall(ISGetIndices(neumann_is, &is_indices));
     for (i = 0; i < is_size; i++) {
       if (is_indices[i] > -1 && is_indices[i] < nvtxs) { /* out of bounds indices (if any) are skipped */
         graph->nodes[is_indices[i]].special_dof = PCBDDCGRAPH_NEUMANN_MARK;
       }
     }
-    PetscCall(ISRestoreIndices(neumann_is, (const PetscInt **)&is_indices));
+    PetscCall(ISRestoreIndices(neumann_is, &is_indices));
   }
 
   /* Take into account Dirichlet nodes (they overwrite any mark previously set) */
   if (dirichlet_is) {
     PetscCall(ISGetLocalSize(dirichlet_is, &is_size));
-    PetscCall(ISGetIndices(dirichlet_is, (const PetscInt **)&is_indices));
+    PetscCall(ISGetIndices(dirichlet_is, &is_indices));
     for (i = 0; i < is_size; i++) {
       if (is_indices[i] > -1 && is_indices[i] < nvtxs) { /* out of bounds indices (if any) are skipped */
         if (!graph->seq_graph) {                         /* dirichlet nodes treated as internal */
@@ -895,20 +895,20 @@ PetscErrorCode PCBDDCGraphSetUp(PCBDDCGraph graph, PetscInt custom_minimal_size,
         graph->nodes[is_indices[i]].special_dof = PCBDDCGRAPH_DIRICHLET_MARK;
       }
     }
-    PetscCall(ISRestoreIndices(dirichlet_is, (const PetscInt **)&is_indices));
+    PetscCall(ISRestoreIndices(dirichlet_is, &is_indices));
   }
 
   /* mark special nodes (if any) -> each will become a single dof equivalence class (i.e. point constraint for BDDC) */
   if (custom_primal_vertices) {
     PetscCall(ISGetLocalSize(custom_primal_vertices, &is_size));
-    PetscCall(ISGetIndices(custom_primal_vertices, (const PetscInt **)&is_indices));
+    PetscCall(ISGetIndices(custom_primal_vertices, &is_indices));
     for (i = 0, j = 0; i < is_size; i++) {
       if (is_indices[i] > -1 && is_indices[i] < nvtxs && graph->nodes[is_indices[i]].special_dof != PCBDDCGRAPH_DIRICHLET_MARK) { /* out of bounds indices (if any) are skipped */
         graph->nodes[is_indices[i]].special_dof = PCBDDCGRAPH_SPECIAL_MARK - j;
         j++;
       }
     }
-    PetscCall(ISRestoreIndices(custom_primal_vertices, (const PetscInt **)&is_indices));
+    PetscCall(ISRestoreIndices(custom_primal_vertices, &is_indices));
   }
 
   /* mark interior nodes as touched and belonging to partition number 0 */
@@ -1026,7 +1026,7 @@ PetscErrorCode PCBDDCGraphSetUp(PCBDDCGraph graph, PetscInt custom_minimal_size,
 
   PetscCall(PetscHMapICreate(&cnt_unique));
   for (j = 0; j < graph->ncc; j++) {
-    PetscInt c = 0, ref_node = PETSC_MAX_INT;
+    PetscInt c = 0, ref_node = PETSC_INT_MAX;
 
     for (k = graph->cptr[j]; k < graph->cptr[j + 1]; k++) {
       ref_node = PetscMin(ref_node, queue_global[k]);
@@ -1091,7 +1091,7 @@ PetscErrorCode PCBDDCGraphSetUp(PCBDDCGraph graph, PetscInt custom_minimal_size,
       c += degree[i];
     }
     PetscCall(PetscFree(rdata));
-    PetscCall(MPIU_Allreduce(MPI_IN_PLACE, &valid, 1, MPIU_BOOL, MPI_LAND, comm));
+    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &valid, 1, MPIU_BOOL, MPI_LAND, comm));
     PetscCheck(valid, comm, PETSC_ERR_PLIB, "Initial local subsets are not consistent");
 
     /* Now create SF with each root extended to gsubset_size roots */
@@ -1128,7 +1128,7 @@ PetscErrorCode PCBDDCGraphSetUp(PCBDDCGraph graph, PetscInt custom_minimal_size,
     PetscCall(PetscMalloc1(nli, &iremote));
     PetscCall(PetscMalloc2(mss, &queue_global_uniq, mss, &touched));
     for (PetscInt i = 0, nli = 0; i < graph->n_subsets; i++) {
-      const PetscMPIInt rr                = subs_remote[i].rank;
+      const PetscMPIInt rr                = (PetscMPIInt)subs_remote[i].rank;
       const PetscInt    start             = start_rsize[i];
       const PetscInt    subset_size       = graph->subset_size[i];
       const PetscInt    gsubset_size      = graph->gsubset_size[i];
@@ -1232,7 +1232,7 @@ PetscErrorCode PCBDDCGraphReset(PCBDDCGraph graph)
   graph->n_subsets           = 0;
   graph->custom_minimal_size = 1;
   graph->n_local_subs        = 0;
-  graph->maxcount            = PETSC_MAX_INT;
+  graph->maxcount            = PETSC_INT_MAX;
   graph->seq_graph           = PETSC_FALSE;
   graph->setupcalled         = PETSC_FALSE;
   PetscFunctionReturn(PETSC_SUCCESS);

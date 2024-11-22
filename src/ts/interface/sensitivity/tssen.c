@@ -1216,7 +1216,7 @@ static PetscErrorCode TSAdjointMonitorSensi(TS ts, PetscInt step, PetscReal ptim
 . name         - the monitor type one is seeking
 . help         - message indicating what monitoring is done
 . manual       - manual page for the monitor
-. monitor      - the monitor function
+. monitor      - the monitor function, its context must be a `PetscViewerAndFormat`
 - monitorsetup - a function that is called once ONLY if the user selected this monitor that may set additional features of the `TS` or `PetscViewer` objects
 
   Level: developer
@@ -1227,7 +1227,7 @@ static PetscErrorCode TSAdjointMonitorSensi(TS ts, PetscInt step, PetscReal ptim
           `PetscOptionsName()`, `PetscOptionsBegin()`, `PetscOptionsEnd()`, `PetscOptionsHeadBegin()`,
           `PetscOptionsStringArray()`, `PetscOptionsRealArray()`, `PetscOptionsScalar()`,
           `PetscOptionsBoolGroupBegin()`, `PetscOptionsBoolGroup()`, `PetscOptionsBoolGroupEnd()`,
-          `PetscOptionsFList()`, `PetscOptionsEList()`
+          `PetscOptionsFList()`, `PetscOptionsEList()`, `PetscViewerAndFormat`
 @*/
 PetscErrorCode TSAdjointMonitorSetFromOptions(TS ts, const char name[], const char help[], const char manual[], PetscErrorCode (*monitor)(TS, PetscInt, PetscReal, Vec, PetscInt, Vec *, Vec *, PetscViewerAndFormat *), PetscErrorCode (*monitorsetup)(TS, PetscViewerAndFormat *))
 {
@@ -1242,7 +1242,7 @@ PetscErrorCode TSAdjointMonitorSetFromOptions(TS ts, const char name[], const ch
     PetscCall(PetscViewerAndFormatCreate(viewer, format, &vf));
     PetscCall(PetscViewerDestroy(&viewer));
     if (monitorsetup) PetscCall((*monitorsetup)(ts, vf));
-    PetscCall(TSAdjointMonitorSet(ts, (PetscErrorCode(*)(TS, PetscInt, PetscReal, Vec, PetscInt, Vec *, Vec *, void *))monitor, vf, (PetscErrorCode(*)(void **))PetscViewerAndFormatDestroy));
+    PetscCall(TSAdjointMonitorSet(ts, (PetscErrorCode (*)(TS, PetscInt, PetscReal, Vec, PetscInt, Vec *, Vec *, void *))monitor, vf, (PetscCtxDestroyFn *)PetscViewerAndFormatDestroy));
   }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -1258,7 +1258,7 @@ PetscErrorCode TSAdjointMonitorSetFromOptions(TS ts, const char name[], const ch
 . adjointmonitor  - monitoring routine
 . adjointmctx     - [optional] user-defined context for private data for the monitor routine
                     (use `NULL` if no context is desired)
-- adjointmdestroy - [optional] routine that frees monitor context (may be `NULL`)
+- adjointmdestroy - [optional] routine that frees monitor context (may be `NULL`), see `PetscCtxDestroyFn` for its calling sequence
 
   Calling sequence of `adjointmonitor`:
 + ts          - the `TS` context
@@ -1271,9 +1271,6 @@ PetscErrorCode TSAdjointMonitorSetFromOptions(TS ts, const char name[], const ch
 . mu          - sensitivities to parameters
 - adjointmctx - [optional] adjoint monitoring context
 
-  Calling sequence of `adjointmdestroy`:
-. mctx - the monitor context to destroy
-
   Level: intermediate
 
   Note:
@@ -1283,9 +1280,9 @@ PetscErrorCode TSAdjointMonitorSetFromOptions(TS ts, const char name[], const ch
   Fortran Notes:
   Only a single monitor function can be set for each `TS` object
 
-.seealso: [](ch_ts), `TS`, `TSAdjointSolve()`, `TSAdjointMonitorCancel()`
+.seealso: [](ch_ts), `TS`, `TSAdjointSolve()`, `TSAdjointMonitorCancel()`, `PetscCtxDestroyFn`
 @*/
-PetscErrorCode TSAdjointMonitorSet(TS ts, PetscErrorCode (*adjointmonitor)(TS ts, PetscInt steps, PetscReal time, Vec u, PetscInt numcost, Vec *lambda, Vec *mu, void *adjointmctx), void *adjointmctx, PetscErrorCode (*adjointmdestroy)(void **mctx))
+PetscErrorCode TSAdjointMonitorSet(TS ts, PetscErrorCode (*adjointmonitor)(TS ts, PetscInt steps, PetscReal time, Vec u, PetscInt numcost, Vec *lambda, Vec *mu, void *adjointmctx), void *adjointmctx, PetscCtxDestroyFn *adjointmdestroy)
 {
   PetscInt  i;
   PetscBool identical;
@@ -1293,13 +1290,13 @@ PetscErrorCode TSAdjointMonitorSet(TS ts, PetscErrorCode (*adjointmonitor)(TS ts
   PetscFunctionBegin;
   PetscValidHeaderSpecific(ts, TS_CLASSID, 1);
   for (i = 0; i < ts->numbermonitors; i++) {
-    PetscCall(PetscMonitorCompare((PetscErrorCode(*)(void))adjointmonitor, adjointmctx, adjointmdestroy, (PetscErrorCode(*)(void))ts->adjointmonitor[i], ts->adjointmonitorcontext[i], ts->adjointmonitordestroy[i], &identical));
+    PetscCall(PetscMonitorCompare((PetscErrorCode (*)(void))adjointmonitor, adjointmctx, adjointmdestroy, (PetscErrorCode (*)(void))ts->adjointmonitor[i], ts->adjointmonitorcontext[i], ts->adjointmonitordestroy[i], &identical));
     if (identical) PetscFunctionReturn(PETSC_SUCCESS);
   }
   PetscCheck(ts->numberadjointmonitors < MAXTSMONITORS, PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Too many adjoint monitors set");
   ts->adjointmonitor[ts->numberadjointmonitors]          = adjointmonitor;
   ts->adjointmonitordestroy[ts->numberadjointmonitors]   = adjointmdestroy;
-  ts->adjointmonitorcontext[ts->numberadjointmonitors++] = (void *)adjointmctx;
+  ts->adjointmonitorcontext[ts->numberadjointmonitors++] = adjointmctx;
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -1399,7 +1396,7 @@ PetscErrorCode TSAdjointMonitorDrawSensi(TS ts, PetscInt step, PetscReal ptime, 
 
   PetscCall(VecView(lambda[0], ictx->viewer));
   PetscCall(PetscViewerDrawGetDraw(ictx->viewer, 0, &draw));
-  PetscCall(PetscSNPrintf(time, 32, "Timestep %d Time %g", (int)step, (double)ptime));
+  PetscCall(PetscSNPrintf(time, 32, "Timestep %" PetscInt_FMT " Time %g", step, (double)ptime));
   PetscCall(PetscDrawGetCoordinates(draw, &xl, &yl, &xr, &yr));
   h = yl + .95 * (yr - yl);
   PetscCall(PetscDrawStringCentered(draw, .5 * (xl + xr), h, PETSC_DRAW_BLACK, time));
@@ -1451,7 +1448,7 @@ PetscErrorCode TSAdjointSetFromOptions(TS ts, PetscOptionItems *PetscOptionsObje
 
     PetscCall(PetscOptionsInt("-ts_adjoint_monitor_draw_sensi", "Monitor adjoint sensitivities (lambda only) graphically", "TSAdjointMonitorDrawSensi", howoften, &howoften, NULL));
     PetscCall(TSMonitorDrawCtxCreate(PetscObjectComm((PetscObject)ts), NULL, NULL, PETSC_DECIDE, PETSC_DECIDE, 300, 300, howoften, &ctx));
-    PetscCall(TSAdjointMonitorSet(ts, TSAdjointMonitorDrawSensi, ctx, (PetscErrorCode(*)(void **))TSMonitorDrawCtxDestroy));
+    PetscCall(TSAdjointMonitorSet(ts, TSAdjointMonitorDrawSensi, ctx, (PetscCtxDestroyFn *)TSMonitorDrawCtxDestroy));
   }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -1768,6 +1765,8 @@ PetscErrorCode TSForwardStep(TS ts)
   Level: beginner
 
   Notes:
+  Use `PETSC_DETERMINE` to use the number of columns of `Smat` for `nump`
+
   Forward sensitivity is also called 'trajectory sensitivity' in some fields such as power systems.
   This function turns on a flag to trigger `TSSolve()` to compute forward sensitivities automatically.
   You must call this function before `TSSolve()`.
@@ -1781,7 +1780,7 @@ PetscErrorCode TSForwardSetSensitivities(TS ts, PetscInt nump, Mat Smat)
   PetscValidHeaderSpecific(ts, TS_CLASSID, 1);
   PetscValidHeaderSpecific(Smat, MAT_CLASSID, 3);
   ts->forward_solve = PETSC_TRUE;
-  if (nump == PETSC_DEFAULT) {
+  if (nump == PETSC_DEFAULT || nump == PETSC_DETERMINE) {
     PetscCall(MatGetSize(Smat, NULL, &ts->num_parameters));
   } else ts->num_parameters = nump;
   PetscCall(PetscObjectReference((PetscObject)Smat));
@@ -1858,7 +1857,7 @@ PetscErrorCode TSForwardSetInitialSensitivities(TS ts, Mat didp)
   PetscFunctionBegin;
   PetscValidHeaderSpecific(ts, TS_CLASSID, 1);
   PetscValidHeaderSpecific(didp, MAT_CLASSID, 2);
-  if (!ts->mat_sensip) PetscCall(TSForwardSetSensitivities(ts, PETSC_DEFAULT, didp));
+  if (!ts->mat_sensip) PetscCall(TSForwardSetSensitivities(ts, PETSC_DETERMINE, didp));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

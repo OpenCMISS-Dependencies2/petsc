@@ -11,17 +11,22 @@ Changes: Development
 
 .. rubric:: General:
 
+- Add ``PetscCtxDestroyFn`` as the prototype for all context destroy functions. It is ``PetscErrorCode ()(void **)``. Previously some context destructor
+  setters took ``PetscErrorCode ()(void *)``. But these would not work directly with PETSc objects as contexts and having two different
+  context destructor models added unneeded complexity to the library. This change is not backward compatible
+- Deprecate ``PetscContainerSetUserDestroy()`` with ``PetscContainerSetCtxDestroy()``, updating will require a small change in calling code
+- Deprecate ``PetscContainerCtxDestroyDefault`` with ``PetscCtxDestroyDefault()``
+- Add ``PetscIntViewNumColumns()``, ``PetscScalarViewNumColumns()``, and ``PetscRealViewNumColumns()``
+
 .. rubric:: Configure/Build:
 
-- Add ``--with-openmp-kernels``
+- Update ``--download-pastix`` to use CMake build, with additional dependency on LAPACKE and CBLAS, can use for ex. MKL  with ``--with-blaslapack-dir=${MKLROOT}``, or Netlib LAPACK with ``--download-netlib-lapack --with-netlib-lapack-c-bindings``
+- Add option ``--with-library-name-suffix=<suffix>``
 
 .. rubric:: Sys:
 
-- Add ``PetscPragmaUseOMPKernels``
-- Deprecate ``PetscOptionsRestoreViewer()`` in favor of ``PetscViewerDestroy()``
-- Deprecate ``PetscOptionsGetViewer()``, and ``PetscOptionsGetViewers()`` in favor of ``PetscOptionsCreateViewer()`` and ``PetscOptionsCreateViewers()``
-- Deprecate ``PetscOptionsPushGetViewerOff()``, ``PetscOptionsPopGetViewerOff()``, and ``PetscOptionsGetViewerOff()`` in favor of
-  ``PetscOptionsPushCreateViewerOff()``, ``PetscOptionsPopCreateViewerOff()``, and ``PetscOptionsGetCreateViewerOff()``
+- Add ``PetscCIntCast()``
+- Add ``PetscObjectHasFunction()`` to query for the presence of a composed method
 
 .. rubric:: Event Logging:
 
@@ -33,16 +38,13 @@ Changes: Development
 
 .. rubric:: IS:
 
+- Add ``ISGetCompressOutput()`` and ``ISSetCompressOutput()``
+
 .. rubric:: VecScatter / PetscSF:
 
 .. rubric:: PF:
 
 .. rubric:: Vec:
-
-- The ``IS`` passed to ``VecISAXPY()``, ``VecISCopy()``. ``VecISSet()``, and ``VecISShift()`` must have the same communicator of the vectors used
-- Make ``VecLock`` API active in optimized mode
-- ``VecNestSetSubVec()`` and ``VecNestSetSubVecs()`` now take references to input vectors rather than creating duplicates
-- Deprecate ``VecSetInf()`` with ``VecFlag()``
 
 .. rubric:: PetscSection:
 
@@ -50,17 +52,12 @@ Changes: Development
 
 .. rubric:: Mat:
 
+- Add ``MatCopyHashToXAIJ()`` which allows assembling an XAIJ matrix in hash table form into another XAIJ matrix
+- Add ``MatResetHash()`` which allows resetting an XAIJ matrix to use a hash table
+
 .. rubric:: MatCoarsen:
 
 .. rubric:: PC:
-
-- Add support in ``PCFieldSplitSetFields()`` including with ``-pc_fieldsplit_%d_fields fields`` for ``MATNEST``,  making it possible to
-  utilize multiple levels of ``PCFIELDSPLIT`` with ``MATNEST`` from the command line
-- Add ``PCCompositeSpecialSetAlphaMat()`` API to use a matrix other than the identity in
-  preconditioners based on an alternating direction iteration, e.g., setting :math:`M` for
-  :math:`P = (A + alpha M) M^{-1} (alpha M + B)`
-
-- Change the option database keys for coarsening for ``PCGAMG`` to use the prefix ``-pc_gamg_``, for example ``-pc_gamg_mat_coarsen_type``
 
 .. rubric:: KSP:
 
@@ -70,27 +67,25 @@ Changes: Development
 
 .. rubric:: TS:
 
-- Add Rosenbrock-W methods from :cite:`rang2015improved` with :math:`B_{PR}` stability: ``TSROSWR34PRW``, ``TSROSWR3PRL2``, ``TSROSWRODASPR``, and ``TSROSWRODASPR2``
-
 .. rubric:: TAO:
 
 .. rubric:: DM/DA:
 
-- Add ``DMGetSparseLocalize()`` and ``DMSetSparseLocalize()``
-- Add ``DMGeomModelRegister()``, ``DMGeomModelRegisterAll()``, ``DMGeomModelRegisterDestroy()``, ``DMSnapToGeomModel()``, ``DMSetSnapToGeomModel()`` to support registering geometric models
-- Add ``DMGetOutputSequenceLength()``
+- Deprecate ``DMGetSection()`` and ``DMSetSection()`` for existing ``DMGetLocalSection()`` and ``DMSetLocalSection()``
 
 .. rubric:: DMSwarm:
 
+- Add ``DMSwarmSortRestorePointsPerCell()``
+- Change ``DMSwarmVectorGetField()`` and add ``DMSwarmVectorDefineFields()`` to handle multiple fields
+- Add ``DMSwarmGetCoordinateField()`` and ``DMSwarmSetCoordinateField()``
+- Add ``DMSwarmComputeMoments()``
+- Add ``DMSwarmPushCellDM()`` and ``DMSwarmPopCellDM()``
+
 .. rubric:: DMPlex:
 
-- Add ``DMLabelGetValueBounds()``
-- Add ``DMPlexOrientLabel()``
-- Add an argument to ``DMPlexLabelCohesiveComplete()`` in order to change behavior at surface boundary
-- Remove ``DMPlexSnapToGeomModel()``
-- Add refinement argument to ``DMPlexCreateHexCylinderMesh()``
-- Now ``DMPlexComputeBdIntegral()`` takes one function per field
-- Add ``DMPlexCreateEdgeNumbering()``
+- Add ``DMPlexTransformGetMatchStrata()`` and ``DMPlexTransformSetMatchStrata()``
+- Deprecate ``DMPlexSetGlobalToNaturalSF()`` and ``DMPlexGetGlobalToNaturalSF()`` for existing ``DMSetNaturalSF()`` and ``DMGetNaturalSF()``
+- Add ``-dm_plex_box_label_bd`` to setup isoperiodicity when using ``-dm_plex_box_label_bd``
 
 .. rubric:: FE/FV:
 
@@ -101,10 +96,3 @@ Changes: Development
 .. rubric:: DT:
 
 .. rubric:: Fortran:
-
-- Add ``PETSC_NULL_ENUM`` to be used instead of ``PETSC_NULL_INTEGER`` when a pointer to an ``enum`` is expected in a PETSc function call
-- Add ``PETSC_NULL_INTEGER_ARRAY``, ``PETSC_NULL_SCALAR_ARRAY``, and ``PETSC_NULL_REAL_ARRAY`` for use instead of
-  ``PETSC_NULL_INTEGER``, ``PETSC_NULL_SCALAR``,  and ``PETSC_NULL_REAL`` when an array is expected in a PETSc function call
-- Add automatically generated interface definitions for most PETSc functions to detect illegal usage at compile time
-- Add ``PetscObjectIsNull()`` for users to check if a PETSc object is ``NULL``
-- Change the PETSc Fortran API so that non-array values, ``v``, passed to PETSc routines expecting arrays must be cast with ``[v]`` in the calling sequence

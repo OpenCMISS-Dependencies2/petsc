@@ -308,7 +308,7 @@ PetscErrorCode KSPMonitorRange_Private(KSP ksp, PetscInt it, PetscReal *per)
   for (i = 0; i < n; ++i) pwork += (PetscAbsScalar(r[i]) > .20 * rmax);
   PetscCall(VecRestoreArrayRead(resid, &r));
   PetscCall(VecDestroy(&resid));
-  PetscCall(MPIU_Allreduce(&pwork, per, 1, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)ksp)));
+  PetscCallMPI(MPIU_Allreduce(&pwork, per, 1, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)ksp)));
   *per = *per / N;
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -355,7 +355,7 @@ PetscErrorCode KSPMonitorResidualRange(KSP ksp, PetscInt it, PetscReal rnorm, Pe
   PetscCall(KSPMonitorRange_Private(ksp, it, &perc));
   rel  = (prev - rnorm) / prev;
   prev = rnorm;
-  PetscCall(PetscViewerASCIIPrintf(viewer, "%3" PetscInt_FMT " KSP preconditioned resid norm %14.12e Percent values above 20 percent of maximum %5.2f relative decrease %5.2e ratio %5.2e\n", it, (double)rnorm, (double)(100.0 * perc), (double)rel, (double)(rel / perc)));
+  PetscCall(PetscViewerASCIIPrintf(viewer, "%3" PetscInt_FMT " KSP preconditioned resid norm %14.12e Percent values above 20 percent of maximum %5.2f relative decrease %5.2e ratio %5.2e\n", it, (double)rnorm, (double)(100 * perc), (double)rel, (double)(rel / perc)));
   PetscCall(PetscViewerASCIISubtractTab(viewer, tablevel));
   PetscCall(PetscViewerPopFormat(viewer));
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -1209,11 +1209,11 @@ PetscErrorCode KSPMonitorDynamicTolerance(KSP ksp, PetscInt its, PetscReal fnorm
   PetscCall(PetscObjectTypeCompare((PetscObject)pc, PCDEFLATION, &flg));
   if (flg) {
     PetscCall(PCDeflationGetCoarseKSP(pc, &kspinner));
-    PetscCall(KSPSetTolerances(kspinner, inner_rtol, outer_abstol, outer_dtol, PETSC_DEFAULT));
+    PetscCall(KSPSetTolerances(kspinner, inner_rtol, outer_abstol, outer_dtol, PETSC_CURRENT));
     PetscFunctionReturn(PETSC_SUCCESS);
   }
 
-  /* todo: dynamic tolerance may apply to other types of pc */
+  /* TODO: dynamic tolerance may apply to other types of pc */
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -2064,7 +2064,7 @@ PetscErrorCode KSPSetApplicationContext(KSP ksp, void *ctx)
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(ksp, KSP_CLASSID, 1);
-  ksp->user = ctx;
+  ksp->ctx = ctx;
   PetscCall(KSPGetPC(ksp, &pc));
   PetscCall(PCSetApplicationContext(pc, ctx));
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -2093,7 +2093,7 @@ PetscErrorCode KSPGetApplicationContext(KSP ksp, void *ctx)
 {
   PetscFunctionBegin;
   PetscValidHeaderSpecific(ksp, KSP_CLASSID, 1);
-  *(void **)ctx = ksp->user;
+  *(void **)ctx = ksp->ctx;
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

@@ -107,7 +107,7 @@ static PetscErrorCode MatCoarsenApply_MIS_private(IS perm, Mat Gmat, PetscBool s
             cpid   = idx[j]; /* compressed row ID in B mat */
             gid    = cpcol_gid[cpid];
             statej = cpcol_state[cpid];
-            PetscCheck(!MIS_IS_SELECTED(statej), PETSC_COMM_SELF, PETSC_ERR_SUP, "selected ghost: %d", (int)gid);
+            PetscCheck(!MIS_IS_SELECTED(statej), PETSC_COMM_SELF, PETSC_ERR_SUP, "selected ghost: %" PetscInt_FMT, gid);
             if (statej == MIS_NOT_DONE && gid >= Iend) { /* should be (pe>rank), use gid as pe proxy */
               isOK = PETSC_FALSE;                        /* can not delete */
               break;
@@ -203,7 +203,7 @@ static PetscErrorCode MatCoarsenApply_MIS_private(IS perm, Mat Gmat, PetscBool s
       }
       /* all done? */
       t1 = nloc - nDone;
-      PetscCall(MPIU_Allreduce(&t1, &t2, 1, MPIU_INT, MPI_SUM, comm)); /* synchronous version */
+      PetscCallMPI(MPIU_Allreduce(&t1, &t2, 1, MPIU_INT, MPI_SUM, comm)); /* synchronous version */
       if (!t2) break;
     } else break; /* all done */
   } /* outer parallel MIS loop */
@@ -242,7 +242,7 @@ static PetscErrorCode MatCoarsenApply_MIS_private(IS perm, Mat Gmat, PetscBool s
     PetscCall(MatGetSize(Gmat, &MM, NULL));
     // check sizes -- all vertices must get in graph
     PetscCall(PetscCDCount(agg_lists, &aa[0]));
-    PetscCall(MPIU_Allreduce(aa, bb, 2, MPIU_INT, MPI_SUM, comm));
+    PetscCallMPI(MPIU_Allreduce(aa, bb, 2, MPIU_INT, MPI_SUM, comm));
     if (MM != bb[0]) PetscCall(PetscInfo(info_is, "Warning: N = %" PetscInt_FMT ", sum of aggregates %" PetscInt_FMT ", %" PetscInt_FMT " removed total\n", MM, bb[0], bb[1]));
     PetscCheck(MM >= bb[0], comm, PETSC_ERR_PLIB, "Sum of aggs is too large");
   }
@@ -292,12 +292,12 @@ static PetscErrorCode MatCoarsenView_MIS(MatCoarsen coarse, PetscViewer viewer)
         PetscCDIntNd *pos, *pos2;
         for (PetscInt kk = 0; kk < coarse->agg_lists->size; kk++) {
           PetscCall(PetscCDGetHeadPos(coarse->agg_lists, kk, &pos));
-          if ((pos2 = pos)) PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, "selected %d: ", (int)kk));
+          if ((pos2 = pos)) PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, "selected %" PetscInt_FMT ": ", kk));
           while (pos) {
             PetscInt gid1;
             PetscCall(PetscCDIntNdGetID(pos, &gid1));
             PetscCall(PetscCDGetNextPos(coarse->agg_lists, kk, &pos));
-            PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, " %d ", (int)gid1));
+            PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, " %" PetscInt_FMT " ", gid1));
           }
           if (pos2) PetscCall(PetscViewerASCIISynchronizedPrintf(viewer, "\n"));
         }

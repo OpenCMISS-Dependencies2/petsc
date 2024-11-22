@@ -28,7 +28,8 @@ PetscErrorCode DMPlexCreateProcessSF(DM dm, PetscSF sfPoint, IS *processRanks, P
   const PetscSFNode *remotePoints;
   PetscInt          *localPointsNew;
   PetscSFNode       *remotePointsNew;
-  PetscInt          *ranks, *ranksNew;
+  PetscMPIInt       *ranks;
+  PetscInt          *ranksNew;
   PetscMPIInt        size;
 
   PetscFunctionBegin;
@@ -39,8 +40,8 @@ PetscErrorCode DMPlexCreateProcessSF(DM dm, PetscSF sfPoint, IS *processRanks, P
   PetscCallMPI(MPI_Comm_size(PetscObjectComm((PetscObject)dm), &size));
   PetscCall(PetscSFGetGraph(sfPoint, &numRoots, &numLeaves, &localPoints, &remotePoints));
   PetscCall(PetscMalloc1(numLeaves, &ranks));
-  for (l = 0; l < numLeaves; ++l) ranks[l] = remotePoints[l].rank;
-  PetscCall(PetscSortRemoveDupsInt(&numLeaves, ranks));
+  for (l = 0; l < numLeaves; ++l) ranks[l] = (PetscMPIInt)remotePoints[l].rank;
+  PetscCall(PetscSortRemoveDupsMPIInt(&numLeaves, ranks));
   PetscCall(PetscMalloc1(numLeaves, &ranksNew));
   PetscCall(PetscMalloc1(numLeaves, &localPointsNew));
   PetscCall(PetscMalloc1(numLeaves, &remotePointsNew));
@@ -306,8 +307,7 @@ PetscErrorCode DMRefine_Plex(DM dm, MPI_Comm comm, DM *rdm)
     const char         *prefix;
     PetscOptions        options;
     PetscInt            cDegree;
-    PetscBool           useCeed, flg;
-    char                name[PETSC_MAX_PATH_LEN];
+    PetscBool           useCeed;
 
     PetscCall(DMPlexTransformCreate(PetscObjectComm((PetscObject)dm), &tr));
     PetscCall(DMPlexTransformSetDM(tr, dm));
@@ -319,16 +319,6 @@ PetscErrorCode DMRefine_Plex(DM dm, MPI_Comm comm, DM *rdm)
     PetscCall(PetscObjectSetOptions((PetscObject)tr, options));
     PetscCall(DMPlexTransformSetFromOptions(tr));
     PetscCall(PetscObjectSetOptions((PetscObject)tr, NULL));
-    PetscCall(PetscOptionsGetString(options, prefix, "-dm_plex_transform_active", name, PETSC_MAX_PATH_LEN, &flg));
-    if (flg) {
-      PetscCall(DMHasLabel(dm, name, &flg));
-      if (flg) {
-        DMLabel active;
-
-        PetscCall(DMGetLabel(dm, name, &active));
-        PetscCall(DMPlexTransformSetActive(tr, active));
-      }
-    }
     PetscCall(DMPlexTransformSetUp(tr));
     PetscCall(PetscObjectViewFromOptions((PetscObject)tr, NULL, "-dm_plex_transform_view"));
     PetscCall(DMPlexTransformApply(tr, dm, rdm));
@@ -340,11 +330,14 @@ PetscErrorCode DMRefine_Plex(DM dm, MPI_Comm comm, DM *rdm)
     PetscCall(DMGetCoordinateDM(dm, &cdm));
     PetscCall(DMGetCoordinateDM(*rdm, &rcdm));
     PetscCall(DMGetCoordinateDegree_Internal(dm, &cDegree));
-    if (cDegree <= 1) {
-      PetscCall(DMCopyDisc(cdm, rcdm));
-    } else {
+    {
+      PetscDS cds, rcds;
+
       PetscCall(DMPlexCreateCoordinateSpace(*rdm, cDegree, PETSC_TRUE, NULL));
       PetscCall(DMGetCoordinateDM(*rdm, &rcdm));
+      PetscCall(DMGetDS(cdm, &cds));
+      PetscCall(DMGetDS(rcdm, &rcds));
+      PetscCall(PetscDSCopyConstants(cds, rcds));
     }
     PetscCall(DMPlexGetUseCeed(cdm, &useCeed));
     PetscCall(DMPlexSetUseCeed(rcdm, useCeed));

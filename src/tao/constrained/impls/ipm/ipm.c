@@ -820,7 +820,7 @@ static PetscErrorCode IPMUpdateK(Tao tao)
   subsize = PetscMax(ipmP->n, ipmP->nb);
   subsize = PetscMax(ipmP->me, subsize);
   subsize = PetscMax(2, subsize);
-  PetscCall(PetscMalloc1(subsize, (PetscInt **)&indices));
+  PetscCall(PetscMalloc1(subsize, &indices));
   PetscCall(PetscMalloc1(subsize, &newvals));
 
   r1 = c1 = ipmP->n;
@@ -1058,8 +1058,9 @@ PETSC_EXTERN PetscErrorCode TaoCreate_IPM(Tao tao)
   tao->data = (void *)ipmP;
 
   /* Override default settings (unless already changed) */
-  if (!tao->max_it_changed) tao->max_it = 200;
-  if (!tao->max_funcs_changed) tao->max_funcs = 500;
+  PetscCall(TaoParametersInitialize(tao));
+  PetscObjectParameterSetDefault(tao, max_it, 200);
+  PetscObjectParameterSetDefault(tao, max_funcs, 500);
 
   ipmP->dec        = 10000; /* line search criteria */
   ipmP->taumin     = 0.995;

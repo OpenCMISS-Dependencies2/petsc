@@ -31,53 +31,14 @@ static PetscErrorCode MatAssemblyEnd_MPIAIJKokkos(Mat A, MatAssemblyType mode)
 
 static PetscErrorCode MatMPIAIJSetPreallocation_MPIAIJKokkos(Mat mat, PetscInt d_nz, const PetscInt d_nnz[], PetscInt o_nz, const PetscInt o_nnz[])
 {
-  Mat_MPIAIJ *mpiaij = (Mat_MPIAIJ *)mat->data;
+  Mat_MPIAIJ *mpiaij;
 
   PetscFunctionBegin;
-  // If mat was set to use the "set values with a hash table" mechanism, discard it and restore the cached ops
-  if (mat->hash_active) {
-    mat->ops[0]      = mpiaij->cops;
-    mat->hash_active = PETSC_FALSE;
-  }
-
-  PetscCall(PetscLayoutSetUp(mat->rmap));
-  PetscCall(PetscLayoutSetUp(mat->cmap));
-#if defined(PETSC_USE_DEBUG)
-  if (d_nnz) {
-    PetscInt i;
-    for (i = 0; i < mat->rmap->n; i++) PetscCheck(d_nnz[i] >= 0, PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "d_nnz cannot be less than 0: local row %" PetscInt_FMT " value %" PetscInt_FMT, i, d_nnz[i]);
-  }
-  if (o_nnz) {
-    PetscInt i;
-    for (i = 0; i < mat->rmap->n; i++) PetscCheck(o_nnz[i] >= 0, PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "o_nnz cannot be less than 0: local row %" PetscInt_FMT " value %" PetscInt_FMT, i, o_nnz[i]);
-  }
-#endif
-#if defined(PETSC_USE_CTABLE)
-  PetscCall(PetscHMapIDestroy(&mpiaij->colmap));
-#else
-  PetscCall(PetscFree(mpiaij->colmap));
-#endif
-  PetscCall(PetscFree(mpiaij->garray));
-  PetscCall(VecDestroy(&mpiaij->lvec));
-  PetscCall(VecScatterDestroy(&mpiaij->Mvctx));
-  /* Because the B will have been resized we simply destroy it and create a new one each time */
-  PetscCall(MatDestroy(&mpiaij->B));
-
-  if (!mpiaij->A) {
-    PetscCall(MatCreate(PETSC_COMM_SELF, &mpiaij->A));
-    PetscCall(MatSetSizes(mpiaij->A, mat->rmap->n, mat->cmap->n, mat->rmap->n, mat->cmap->n));
-  }
-  if (!mpiaij->B) {
-    PetscMPIInt size;
-    PetscCallMPI(MPI_Comm_size(PetscObjectComm((PetscObject)mat), &size));
-    PetscCall(MatCreate(PETSC_COMM_SELF, &mpiaij->B));
-    PetscCall(MatSetSizes(mpiaij->B, mat->rmap->n, size > 1 ? mat->cmap->N : 0, mat->rmap->n, size > 1 ? mat->cmap->N : 0));
-  }
-  PetscCall(MatSetType(mpiaij->A, MATSEQAIJKOKKOS));
-  PetscCall(MatSetType(mpiaij->B, MATSEQAIJKOKKOS));
-  PetscCall(MatSeqAIJSetPreallocation(mpiaij->A, d_nz, d_nnz));
-  PetscCall(MatSeqAIJSetPreallocation(mpiaij->B, o_nz, o_nnz));
-  mat->preallocated = PETSC_TRUE;
+  // reuse MPIAIJ's preallocation, which sets A/B's blocksize along other things
+  PetscCall(MatMPIAIJSetPreallocation_MPIAIJ(mat, d_nz, d_nnz, o_nz, o_nnz));
+  mpiaij = static_cast<Mat_MPIAIJ *>(mat->data);
+  PetscCall(MatConvert_SeqAIJ_SeqAIJKokkos(mpiaij->A, MATSEQAIJKOKKOS, MAT_INPLACE_MATRIX, &mpiaij->A));
+  PetscCall(MatConvert_SeqAIJ_SeqAIJKokkos(mpiaij->B, MATSEQAIJKOKKOS, MAT_INPLACE_MATRIX, &mpiaij->B));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -265,6 +226,11 @@ static PetscErrorCode MatSetMPIAIJKokkosWithSplitSeqAIJKokkosMatrices(Mat mat, M
 template <class ExecutionSpace>
 static PetscErrorCode MatMergeGetLaunchParameters(PetscInt numRows, PetscInt nnz, PetscInt rows_per_thread, PetscInt &team_size, PetscInt &vector_length, PetscInt &rows_per_team)
 {
+#if PETSC_PKG_KOKKOS_KERNELS_VERSION_LE(4, 4, 1)
+  constexpr bool is_gpu_exec_space = KokkosKernels::Impl::kk_is_gpu_exec_space<ExecutionSpace>();
+#else
+  constexpr bool is_gpu_exec_space = KokkosKernels::Impl::is_gpu_exec_space_v<ExecutionSpace>;
+#endif
   Kokkos::TeamPolicy<ExecutionSpace> teamPolicy(128, Kokkos::AUTO);
 
   PetscFunctionBegin;
@@ -281,7 +247,7 @@ static PetscErrorCode MatMergeGetLaunchParameters(PetscInt numRows, PetscInt nnz
 
   // Determine rows per thread
   if (rows_per_thread < 1) {
-    if (KokkosKernels::Impl::kk_is_gpu_exec_space<ExecutionSpace>()) rows_per_thread = 1;
+    if (is_gpu_exec_space) rows_per_thread = 1;
     else {
       if (nnz_per_row < 20 && nnz > 5000000) {
         rows_per_thread = 256;
@@ -290,7 +256,7 @@ static PetscErrorCode MatMergeGetLaunchParameters(PetscInt numRows, PetscInt nnz
   }
 
   if (team_size < 1) {
-    if (KokkosKernels::Impl::kk_is_gpu_exec_space<ExecutionSpace>()) {
+    if (is_gpu_exec_space) {
       team_size = 256 / vector_length;
     } else {
       team_size = 1;
@@ -459,7 +425,7 @@ static PetscErrorCode MatMPIAIJKokkosReduceBegin(MPI_Comm comm, KokkosCsrMatrix 
     // Get length of rows (i.e., sizes of leaves) that contribute to my roots
     const PetscMPIInt *iranks, *ranks;
     const PetscInt    *ioffset, *irootloc, *roffset, *rmine;
-    PetscInt           niranks, nranks;
+    PetscMPIInt        niranks, nranks;
     MPI_Request       *reqs;
     PetscMPIInt        tag;
     PetscSF            reduceSF;
@@ -479,8 +445,8 @@ static PetscErrorCode MatMPIAIJKokkosReduceBegin(MPI_Comm comm, KokkosCsrMatrix 
     for (PetscInt i = 0; i < sendRowCnt; i++) sendRowLen[i] = E_RowLen[rmine[i]];
     recvRowLen[0] = 0; // since we will make it in CSR format later
     recvRowLen++;      // advance the pointer now
-    for (PetscInt i = 0; i < niranks; i++) { MPI_Irecv(&recvRowLen[ioffset[i]], ioffset[i + 1] - ioffset[i], MPIU_INT, iranks[i], tag, comm, &reqs[nranks + i]); }
-    for (PetscInt i = 0; i < nranks; i++) { MPI_Isend(&sendRowLen[roffset[i]], roffset[i + 1] - roffset[i], MPIU_INT, ranks[i], tag, comm, &reqs[i]); }
+    for (PetscInt i = 0; i < niranks; i++) MPI_Irecv(&recvRowLen[ioffset[i]], ioffset[i + 1] - ioffset[i], MPIU_INT, iranks[i], tag, comm, &reqs[nranks + i]);
+    for (PetscInt i = 0; i < nranks; i++) MPIU_Isend(&sendRowLen[roffset[i]], roffset[i + 1] - roffset[i], MPIU_INT, ranks[i], tag, comm, &reqs[i]);
     PetscCallMPI(MPI_Waitall(nranks + niranks, reqs, MPI_STATUSES_IGNORE));
 
     // Build the real PetscSF for reducing E rows (buffer to buffer)
@@ -492,8 +458,8 @@ static PetscErrorCode MatMPIAIJKokkosReduceBegin(MPI_Comm comm, KokkosCsrMatrix 
     recvRowLen--; // put it back into csr format
     for (PetscInt i = 0; i < recvRowCnt; i++) recvRowLen[i + 1] += recvRowLen[i];
 
-    for (PetscInt i = 0; i < nranks; i++) { MPI_Irecv(&sdisp[i], 1, MPIU_INT, ranks[i], tag, comm, &reqs[i]); }
-    for (PetscInt i = 0; i < niranks; i++) { MPI_Isend(&rdisp[i], 1, MPIU_INT, iranks[i], tag, comm, &reqs[nranks + i]); }
+    for (PetscInt i = 0; i < nranks; i++) MPIU_Irecv(&sdisp[i], 1, MPIU_INT, ranks[i], tag, comm, &reqs[i]);
+    for (PetscInt i = 0; i < niranks; i++) MPIU_Isend(&rdisp[i], 1, MPIU_INT, iranks[i], tag, comm, &reqs[nranks + i]);
     PetscCallMPI(MPI_Waitall(nranks + niranks, reqs, MPI_STATUSES_IGNORE));
 
     PetscInt     nleaves = 0, Enz = 0;    // leaves are nonzeros I will send
@@ -868,7 +834,8 @@ static PetscErrorCode MatMPIAIJKokkosBcastBegin(Mat E, PetscSF ownerSF, MatReuse
     // Build the real PetscSF for bcasting E rows (buffer to buffer)
     const PetscMPIInt *iranks, *ranks;
     const PetscInt    *ioffset, *irootloc, *roffset;
-    PetscInt           niranks, nranks, *sdisp, *rdisp;
+    PetscMPIInt        niranks, nranks;
+    PetscInt          *sdisp, *rdisp;
     MPI_Request       *reqs;
     PetscMPIInt        tag;
 
@@ -886,8 +853,8 @@ static PetscErrorCode MatMPIAIJKokkosBcastBegin(Mat E, PetscSF ownerSF, MatReuse
     }
 
     PetscCallMPI(PetscCommGetNewTag(comm, &tag));
-    for (PetscInt i = 0; i < nranks; i++) PetscCallMPI(MPI_Irecv(&rdisp[i], 1, MPIU_INT, ranks[i], tag, comm, &reqs[i]));
-    for (PetscInt i = 0; i < niranks; i++) PetscCallMPI(MPI_Isend(&sdisp[i], 1, MPIU_INT, iranks[i], tag, comm, &reqs[nranks + i]));
+    for (PetscInt i = 0; i < nranks; i++) PetscCallMPI(MPIU_Irecv(&rdisp[i], 1, MPIU_INT, ranks[i], tag, comm, &reqs[i]));
+    for (PetscInt i = 0; i < niranks; i++) PetscCallMPI(MPIU_Isend(&sdisp[i], 1, MPIU_INT, iranks[i], tag, comm, &reqs[nranks + i]));
     PetscCallMPI(MPI_Waitall(niranks + nranks, reqs, MPI_STATUSES_IGNORE));
 
     PetscInt     nleaves = Fnz;            // leaves are nonzeros I will receive
@@ -1585,10 +1552,10 @@ struct MatCOOStruct_MPIAIJKokkos {
   ~MatCOOStruct_MPIAIJKokkos() { PetscCallVoid(PetscSFDestroy(&sf)); }
 };
 
-static PetscErrorCode MatCOOStructDestroy_MPIAIJKokkos(void *data)
+static PetscErrorCode MatCOOStructDestroy_MPIAIJKokkos(void **data)
 {
   PetscFunctionBegin;
-  PetscCallCXX(delete static_cast<MatCOOStruct_MPIAIJKokkos *>(data));
+  PetscCallCXX(delete static_cast<MatCOOStruct_MPIAIJKokkos *>(*data));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -1613,7 +1580,7 @@ static PetscErrorCode MatSetPreallocationCOO_MPIAIJKokkos(Mat mat, PetscCount co
   // Put the COO struct in a container and then attach that to the matrix
   PetscCall(PetscContainerCreate(PETSC_COMM_SELF, &container_d));
   PetscCall(PetscContainerSetPointer(container_d, coo_d));
-  PetscCall(PetscContainerSetUserDestroy(container_d, MatCOOStructDestroy_MPIAIJKokkos));
+  PetscCall(PetscContainerSetCtxDestroy(container_d, MatCOOStructDestroy_MPIAIJKokkos));
   PetscCall(PetscObjectCompose((PetscObject)mat, "__PETSc_MatCOOStruct_Device", (PetscObject)container_d));
   PetscCall(PetscContainerDestroy(&container_d));
   PetscFunctionReturn(PETSC_SUCCESS);

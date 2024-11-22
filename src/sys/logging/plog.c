@@ -103,9 +103,7 @@ PetscBool PetscLogGpuTimeFlag = PETSC_FALSE;
 
 PetscLogState petsc_log_state = NULL;
 
-// clang-format off
 #define PETSC_LOG_HANDLER_HOT_BLANK {NULL, NULL, NULL, NULL, NULL, NULL}
-// clang-format on
 
 PetscLogHandlerHot PetscLogHandlers[PETSC_LOG_HANDLER_MAX] = {
   PETSC_LOG_HANDLER_HOT_BLANK,
@@ -134,7 +132,7 @@ PetscErrorCode PetscAddLogDoubleCnt(PetscLogDouble *cnt, PetscLogDouble *tot, Pe
   *cnt_th = *cnt_th + 1;
   *tot_th += tmp;
   PetscCall(PetscSpinlockLock(&PetscLogSpinLock));
-  *tot += (PetscLogDouble)(tmp);
+  *tot += (PetscLogDouble)tmp;
   *cnt += *cnt + 1;
   PetscCall(PetscSpinlockUnlock(&PetscLogSpinLock));
   return PETSC_SUCCESS;
@@ -279,7 +277,7 @@ PetscErrorCode PetscLogHandlerStart(PetscLogHandler h)
         petsc_log_state->stage_stack   = temp_stack;
         petsc_log_state->current_stage = -1;
         for (int s = 0; s < stack_height; s++) {
-          PetscLogStage stage = (PetscLogStage)orig_stack->stack[s];
+          PetscLogStage stage = orig_stack->stack[s];
           PetscCall(PetscLogHandlerStagePush(h, stage));
           PetscCall(PetscIntStackPush(temp_stack, stage));
           petsc_log_state->current_stage = stage;
@@ -331,7 +329,7 @@ PetscErrorCode PetscLogHandlerStop(PetscLogHandler h)
         orig_stack                   = petsc_log_state->stage_stack;
         petsc_log_state->stage_stack = temp_stack;
         for (int s = 0; s < stack_height; s++) {
-          PetscLogStage stage = (PetscLogStage)orig_stack->stack[s];
+          PetscLogStage stage = orig_stack->stack[s];
 
           PetscCall(PetscIntStackPush(temp_stack, stage));
         }
@@ -1070,14 +1068,14 @@ PetscErrorCode PetscLogEventRegister(const char name[], PetscClassId classid, Pe
 
   Input Parameters:
 + event      - The event id
-- collective - Boolean flag indicating whether a particular event is collective
+- collective - `PetscBool` indicating whether a particular event is collective
 
   Level: developer
 
   Notes:
   New events returned from `PetscLogEventRegister()` are collective by default.
 
-  Collective events are handled specially if the command line option -log_sync is used. In that case the logging saves information about
+  Collective events are handled specially if the command line option `-log_sync` is used. In that case the logging saves information about
   two parts of the event; the time for all the MPI ranks to synchronize and then the time for the actual computation/communication
   to be performed. This option is useful to debug imbalance within the computations or communications.
 

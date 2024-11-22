@@ -301,15 +301,12 @@ static PetscErrorCode PetscDualSpaceSumCreateMatrix(PetscDualSpace sp, Mat subma
   PetscInt    *i = NULL, *j = NULL;
   PetscScalar *v = NULL;
   PetscInt     npoints;
-  PetscInt     nrows, ncols, nnz;
+  PetscInt     nrows = 0, ncols, nnz = 0;
   PetscInt     Nc, num_subspaces;
 
   PetscFunctionBegin;
   PetscCall(PetscDualSpaceGetNumComponents(sp, &Nc));
   PetscCall(PetscDualSpaceSumGetNumSubspaces(sp, &num_subspaces));
-  nrows = 0;
-  ncols = 0;
-  nnz   = 0;
   PetscCall(PetscQuadratureGetData(fullquad, NULL, NULL, &npoints, NULL, NULL));
   ncols = Nc * npoints;
   for (PetscInt s = 0; s < num_subspaces; s++) {
@@ -769,7 +766,7 @@ static PetscErrorCode PetscDualSpaceSetUp_Sum(PetscDualSpace sp)
         PetscCall(PetscDualSpaceSetDM(sp, sub_K));
         K = sub_K;
       }
-      PetscCheck(sub_K == K, PetscObjectComm((PetscObject)sp), PETSC_ERR_ARG_WRONGSTATE, "Subspace %d does not have the same DM as the sum space", (int)s);
+      PetscCheck(sub_K == K, PetscObjectComm((PetscObject)sp), PETSC_ERR_ARG_WRONGSTATE, "Subspace %" PetscInt_FMT " does not have the same DM as the sum space", s);
     }
   }
 

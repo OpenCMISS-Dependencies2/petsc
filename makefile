@@ -92,12 +92,12 @@ allfortranstubsinplace: deletefortranstubs
 deleteshared:
 	@for LIBNAME in ${SHLIBS}; \
 	do \
-	   if [ -d ${INSTALL_LIB_DIR}/$${LIBNAME}.dylib.dSYM ]; then \
-             echo ${RM} -rf ${INSTALL_LIB_DIR}/$${LIBNAME}.dylib.dSYM; \
-	     ${RM} -rf ${INSTALL_LIB_DIR}/$${LIBNAME}.dylib.dSYM; \
+	   if [ -d ${INSTALL_LIB_DIR}/$${LIBNAME}$${LIB_NAME_SUFFIX}.dylib.dSYM ]; then \
+             echo ${RM} -rf ${INSTALL_LIB_DIR}/$${LIBNAME}$${LIB_NAME_SUFFIX}.dylib.dSYM; \
+	     ${RM} -rf ${INSTALL_LIB_DIR}/$${LIBNAME}$${LIB_NAME_SUFFIX}.dylib.dSYM; \
 	   fi; \
-           echo ${RM} ${INSTALL_LIB_DIR}/$${LIBNAME}.${SL_LINKER_SUFFIX}; \
-           ${RM} ${INSTALL_LIB_DIR}/$${LIBNAME}.${SL_LINKER_SUFFIX}; \
+           echo ${RM} ${INSTALL_LIB_DIR}/$${LIBNAME}$${LIB_NAME_SUFFIX}.${SL_LINKER_SUFFIX}; \
+           ${RM} ${INSTALL_LIB_DIR}/$${LIBNAME}$${LIB_NAME_SUFFIX}.${SL_LINKER_SUFFIX}; \
 	done
 	@if [ -f ${INSTALL_LIB_DIR}/so_locations ]; then \
           echo ${RM} ${INSTALL_LIB_DIR}/so_locations; \
@@ -155,6 +155,9 @@ check_build:
         fi;
 	+@if [ "`grep -E '^#define PETSC_HAVE_CUDA 1' ${PETSCCONF_H}`" = "#define PETSC_HAVE_CUDA 1" ]; then \
           cd src/snes/tutorials >/dev/null; ${RUN_TEST} runex19_cuda; \
+        fi;
+	+@if [ "`grep -E '^#define PETSC_HAVE_HIP 1' ${PETSCCONF_H}`" = "#define PETSC_HAVE_HIP 1" ]; then \
+          cd src/snes/tutorials >/dev/null; ${RUN_TEST} runex19_hip; \
         fi;
 	+@if [ "${MPI_IS_MPIUNI}" = "" ]; then \
           cd src/snes/tutorials >/dev/null; \

@@ -293,7 +293,7 @@ PetscErrorCode DMAdaptInterpolator(DM dmc, DM dmf, Mat In, KSP smoother, Mat MF,
   /* w_k = \frac{\HC{v_k} B_l v_k}{\HC{v_k} A_l v_k} or the inverse Rayleigh quotient, which we calculate using \frac{\HC{v_k} v_k}{\HC{v_k} B^{-1}_l A_l v_k} */
   PetscCall(KSPGetOperators(smoother, &globalA, NULL));
 
-  PetscCall(MatMatMult(globalA, MF, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &AF));
+  PetscCall(MatMatMult(globalA, MF, MAT_INITIAL_MATRIX, PETSC_DETERMINE, &AF));
   for (k = 0; k < Nc; ++k) {
     PetscScalar vnorm, vAnorm;
     Vec         vf;
@@ -317,7 +317,7 @@ PetscErrorCode DMAdaptInterpolator(DM dmc, DM dmf, Mat In, KSP smoother, Mat MF,
   PetscCall(MatDestroy(&AF));
   if (!MC) {
     allocVc = PETSC_TRUE;
-    PetscCall(MatTransposeMatMult(In, MF, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &MC));
+    PetscCall(MatTransposeMatMult(In, MF, MAT_INITIAL_MATRIX, PETSC_DETERMINE, &MC));
   }
   /* Solve a LS system for each fine row
      MATT: Can we generalize to the case where Nc for the fine space
@@ -524,7 +524,7 @@ static PetscErrorCode DMSwarmProjectFields_Plex_Internal(DM sw, DM dm, PetscInt 
   PetscCall(PetscDSGetComponents(ds, &Nc));
   PetscCall(PetscCitationsRegister(SwarmProjCitation, &SwarmProjcite));
   PetscCheck(Nf == 1, PetscObjectComm((PetscObject)sw), PETSC_ERR_SUP, "Currently supported only for a single field");
-  PetscCall(DMSwarmVectorDefineField(sw, fieldnames[f]));
+  PetscCall(DMSwarmVectorDefineFields(sw, Nf, fieldnames));
   PetscCall(DMSwarmCreateGlobalVectorFromField(sw, fieldnames[f], &u));
   PetscCall(VecGetBlockSize(u, &bs));
   PetscCheck(Nc[f] == bs, PetscObjectComm((PetscObject)sw), PETSC_ERR_SUP, "Field %" PetscInt_FMT " components %" PetscInt_FMT " != %" PetscInt_FMT " blocksize for swarm field %s", f, Nc[f], bs, fieldnames[f]);
@@ -548,6 +548,7 @@ static PetscErrorCode DMSwarmProjectField_ApproxQ1_DA_2D(DM swarm, PetscReal *sw
   const PetscInt    *element;
   PetscScalar        xi_p[2], Ni[4];
   const PetscScalar *_coor;
+  const char        *coordname;
 
   PetscFunctionBegin;
   PetscCall(VecZeroEntries(v_field));
@@ -566,8 +567,9 @@ static PetscErrorCode DMSwarmProjectField_ApproxQ1_DA_2D(DM swarm, PetscReal *sw
   PetscCall(VecGetArrayRead(coor_l, &_coor));
 
   PetscCall(DMDAGetElements(dm, &nel, &npe, &element_list));
+  PetscCall(DMSwarmGetCoordinateField(swarm, &coordname));
   PetscCall(DMSwarmGetLocalSize(swarm, &npoints));
-  PetscCall(DMSwarmGetField(swarm, DMSwarmPICField_coor, NULL, NULL, (void **)&mpfield_coor));
+  PetscCall(DMSwarmGetField(swarm, coordname, NULL, NULL, (void **)&mpfield_coor));
   PetscCall(DMSwarmGetField(swarm, DMSwarmPICField_cellid, NULL, NULL, (void **)&mpfield_cell));
 
   for (p = 0; p < npoints; p++) {
@@ -603,7 +605,7 @@ static PetscErrorCode DMSwarmProjectField_ApproxQ1_DA_2D(DM swarm, PetscReal *sw
   }
 
   PetscCall(DMSwarmRestoreField(swarm, DMSwarmPICField_cellid, NULL, NULL, (void **)&mpfield_cell));
-  PetscCall(DMSwarmRestoreField(swarm, DMSwarmPICField_coor, NULL, NULL, (void **)&mpfield_coor));
+  PetscCall(DMSwarmRestoreField(swarm, coordname, NULL, NULL, (void **)&mpfield_coor));
   PetscCall(DMDARestoreElements(dm, &nel, &npe, &element_list));
   PetscCall(VecRestoreArrayRead(coor_l, &_coor));
   PetscCall(VecRestoreArray(v_field_l, &_field_l));

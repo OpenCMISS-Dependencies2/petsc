@@ -14,7 +14,7 @@ int main(int argc, char **argv)
   PetscMPIInt size;
 
   PetscFunctionBeginUser;
-  PetscCall(PetscInitialize(&argc, &argv, (char *)0, help));
+  PetscCall(PetscInitialize(&argc, &argv, NULL, help));
   PetscCall(PetscViewerPushFormat(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_ASCII_DENSE));
 
   PetscCall(MatCreate(PETSC_COMM_WORLD, &C));
@@ -57,7 +57,7 @@ int main(int argc, char **argv)
     cnt = 0;
     for (i = 0; i < size - 1; i++) {
       PetscCall(PetscRandomGetValueReal(rctx, &rand));
-      parts[i] = (PetscInt)N * rand;
+      parts[i] = (PetscInt)(N * rand);
       parts[i] = PetscMin(parts[i], N - cnt);
       cnt += parts[i];
     }
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
     PetscCall(PetscMalloc1(nblocks, &blocksizes));
     for (i = 0; i < nblocks - 1; i++) {
       PetscCall(PetscRandomGetValueReal(rctx, &rand));
-      blocksizes[i] = PetscMax(1, (PetscInt)N * rand);
+      blocksizes[i] = PetscMax(1, (PetscInt)(N * rand));
       blocksizes[i] = PetscMin(blocksizes[i], N - cnt);
       cnt += blocksizes[i];
       if (cnt == N) {

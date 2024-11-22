@@ -841,7 +841,7 @@ PetscErrorCode VecStepMaxBounded(Vec X, Vec DX, Vec XL, Vec XU, PetscReal *stepm
   PetscCall(VecRestoreArrayRead(XL, &xl));
   PetscCall(VecRestoreArrayRead(XU, &xu));
   PetscCall(VecRestoreArrayRead(DX, &dx));
-  PetscCall(MPIU_Allreduce(&localmax, stepmax, 1, MPIU_REAL, MPIU_MAX, PetscObjectComm((PetscObject)X)));
+  PetscCallMPI(MPIU_Allreduce(&localmax, stepmax, 1, MPIU_REAL, MPIU_MAX, PetscObjectComm((PetscObject)X)));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -908,15 +908,15 @@ PetscErrorCode VecStepBoundInfo(Vec X, Vec DX, Vec XL, Vec XU, PetscReal *boundm
   PetscCall(PetscObjectGetComm((PetscObject)X, &comm));
 
   if (boundmin) {
-    PetscCall(MPIU_Allreduce(&localmin, boundmin, 1, MPIU_REAL, MPIU_MIN, comm));
+    PetscCallMPI(MPIU_Allreduce(&localmin, boundmin, 1, MPIU_REAL, MPIU_MIN, comm));
     PetscCall(PetscInfo(X, "Step Bound Info: Closest Bound: %20.19e\n", (double)*boundmin));
   }
   if (wolfemin) {
-    PetscCall(MPIU_Allreduce(&localwolfemin, wolfemin, 1, MPIU_REAL, MPIU_MIN, comm));
+    PetscCallMPI(MPIU_Allreduce(&localwolfemin, wolfemin, 1, MPIU_REAL, MPIU_MIN, comm));
     PetscCall(PetscInfo(X, "Step Bound Info: Wolfe: %20.19e\n", (double)*wolfemin));
   }
   if (boundmax) {
-    PetscCall(MPIU_Allreduce(&localmax, boundmax, 1, MPIU_REAL, MPIU_MAX, comm));
+    PetscCallMPI(MPIU_Allreduce(&localmax, boundmax, 1, MPIU_REAL, MPIU_MAX, comm));
     if (*boundmax < 0) *boundmax = PETSC_INFINITY;
     PetscCall(PetscInfo(X, "Step Bound Info: Max: %20.19e\n", (double)*boundmax));
   }
@@ -961,12 +961,12 @@ PetscErrorCode VecStepMax(Vec X, Vec DX, PetscReal *step)
   }
   PetscCall(VecRestoreArrayRead(X, &xx));
   PetscCall(VecRestoreArrayRead(DX, &dx));
-  PetscCall(MPIU_Allreduce(&stepmax, step, 1, MPIU_REAL, MPIU_MIN, PetscObjectComm((PetscObject)X)));
+  PetscCallMPI(MPIU_Allreduce(&stepmax, step, 1, MPIU_REAL, MPIU_MIN, PetscObjectComm((PetscObject)X)));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 /*@
-  VecPow - Replaces each component of a vector by x_i^p
+  VecPow - Replaces each component of a vector by $ x_i^p $
 
   Logically Collective
 
@@ -975,6 +975,10 @@ PetscErrorCode VecStepMax(Vec X, Vec DX, PetscReal *step)
 - p - the exponent to use on each element
 
   Level: intermediate
+
+  Note:
+  This handles negative values, Inf, and Nan in the expected IEEE floating pointing manner. For example, the square root of a negative real number is Nan
+  and 1/0.0 is Inf.
 
 .seealso: `Vec`
 @*/
@@ -996,36 +1000,18 @@ PetscErrorCode VecPow(Vec v, PetscScalar p)
     for (i = 0; i < n; ++i) {
       /*  Not-a-number left alone
           Infinity set to one  */
-      if (v1[i] == v1[i]) v1[i] = 1.0;
+      if (!PetscIsNanScalar(v1[i])) v1[i] = 1.0;
     }
   } else if (0.5 == p) {
-    for (i = 0; i < n; ++i) {
-      if (PetscRealPart(v1[i]) >= 0) {
-        v1[i] = PetscSqrtScalar(v1[i]);
-      } else {
-        v1[i] = PETSC_INFINITY;
-      }
-    }
+    for (i = 0; i < n; ++i) { v1[i] = PetscSqrtScalar(v1[i]); }
   } else if (-0.5 == p) {
-    for (i = 0; i < n; ++i) {
-      if (PetscRealPart(v1[i]) >= 0) {
-        v1[i] = 1.0 / PetscSqrtScalar(v1[i]);
-      } else {
-        v1[i] = PETSC_INFINITY;
-      }
-    }
+    for (i = 0; i < n; ++i) { v1[i] = 1.0 / PetscSqrtScalar(v1[i]); }
   } else if (2.0 == p) {
     for (i = 0; i < n; ++i) v1[i] *= v1[i];
   } else if (-2.0 == p) {
     for (i = 0; i < n; ++i) v1[i] = 1.0 / (v1[i] * v1[i]);
   } else {
-    for (i = 0; i < n; ++i) {
-      if (PetscRealPart(v1[i]) >= 0) {
-        v1[i] = PetscPowScalar(v1[i], p);
-      } else {
-        v1[i] = PETSC_INFINITY;
-      }
-    }
+    for (i = 0; i < n; ++i) { v1[i] = PetscPowScalar(v1[i], p); }
   }
   PetscCall(VecRestoreArray(v, &v1));
   PetscFunctionReturn(PETSC_SUCCESS);
