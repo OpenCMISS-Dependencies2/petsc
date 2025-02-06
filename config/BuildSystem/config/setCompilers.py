@@ -2139,9 +2139,12 @@ class Configure(config.base.Configure):
         try:
           self.addCompilerFlag(testFlag, compilerOnly = 1)
           acceptedPIC = self.checkLink(includes = includeLine, body = None, codeBegin = '', codeEnd = '', cleanup = 1, shared = 1, linkLanguage = myLanguage)
+          self.logPrint('*** IN TRY SECTION')
         except RuntimeError:
           acceptedPIC = 0
+          self.logPrint('*** IN RUNTIME EXCEPTION SECTION')
         if not acceptedPIC:
+          self.logPrint('*** NOT ACCEPTED PIC')
           self.logPrint('Rejected '+language+' compiler flag '+testFlag+' because shared linker cannot handle it')
           setattr(self, compilerFlagsArg, oldCompilerFlags)
           continue

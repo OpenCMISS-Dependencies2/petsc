@@ -519,6 +519,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       lines = [s for s in lines if s.find('warning: unused variable') < 0]
       # Intel
       lines = [s for s in lines if s.find("icc: command line remark #10148: option '-i-dynamic' not supported") < 0]
+      lines = [s for s in lines if s.find('Note that use of a debug option without any optimization-level option will turnoff most compiler optimizations similar to use') < 0]
       lines = [s for s in lines if s.find(': remark #10441:') < 0]
       lines = [s for s in lines if s.find("'linker' input unused") < 0]
       # PGI: Ignore warning about temporary license
@@ -562,6 +563,8 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       lines = [s for s in lines if s.find(': remark #10441:') < 0]
       #Intel icpx
       lines = [s for s in lines if s.find("warning: Note that use of '-g' without any optimization-level option will turn off most compiler optimizations similar to use") < 0] 
+      #Intel ifx
+      lines = [s for s in lines if s.find("Note that use of a debug option without any optimization-level option will turnoff most compiler optimizations similar to use") < 0] 
       # PGI: Ignore warning about temporary license
       lines = [s for s in lines if s.find('license.dat') < 0]
       # Cray XT3
