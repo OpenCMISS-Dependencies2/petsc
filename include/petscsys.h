@@ -355,7 +355,7 @@ M*/
 PETSC_EXTERN PetscMPIInt PETSC_MPI_THREAD_REQUIRED;
 
 /*MC
-   PetscBeganMPI - indicates if PETSc initialized MPI during `PetscInitialize()` or if MPI was already initialized.
+   PetscBeganMPI - indicates if PETSc initialized MPI using `MPI_Init()` during `PetscInitialize()` or if MPI was already initialized with `MPI_Init()`
 
    Synopsis:
    #include <petscsys.h>
@@ -364,6 +364,9 @@ PETSC_EXTERN PetscMPIInt PETSC_MPI_THREAD_REQUIRED;
    No Fortran Support
 
    Level: developer
+
+   Note:
+   `MPI_Init()` can never be called after `PetscInitialize()`
 
 .seealso: `PetscInitialize()`, `PetscInitializeCalled`
 M*/
@@ -397,7 +400,7 @@ PETSC_EXTERN PetscErrorCode PetscElementalFinalizePackage(void);
 #endif
 
 /*MC
-   PetscMalloc - Allocates memory, One should use `PetscNew()`, `PetscMalloc1()` or `PetscCalloc1()` usually instead of this
+   PetscMalloc - Allocates memory for use with PETSc. One should use `PetscNew()`, `PetscMalloc1()` or `PetscCalloc1()` usually instead of `PetscMalloc()`
 
    Synopsis:
     #include <petscsys.h>
@@ -416,9 +419,16 @@ PETSC_EXTERN PetscErrorCode PetscElementalFinalizePackage(void);
    Notes:
    Memory is always allocated at least double aligned
 
-   It is safe to allocate size 0 and pass the resulting pointer to `PetscFree()`.
+   It is safe to allocate with an m of 0 and pass the resulting pointer to `PetscFree()`.
+   However, the pointer should never be dereferenced or the program will crash.
 
-.seealso: `PetscFree()`, `PetscNew()`
+   Developer Note:
+   All the `PetscMallocN()` routines actually call `PetscMalloc()` behind the scenes.
+
+   Except for data structures that store information about the PETSc options database all memory allocated by PETSc is
+   obtained with `PetscMalloc()` or `PetscCalloc()`
+
+.seealso: `PetscFree()`, `PetscNew()`, `PetscCalloc()`
 M*/
 #define PetscMalloc(a, b) ((*PetscTrMalloc)((a), PETSC_FALSE, __LINE__, PETSC_FUNCTION_NAME, __FILE__, (void **)(b)))
 
@@ -432,7 +442,7 @@ M*/
    Not Collective
 
    Input Parameters:
-+  m - number of bytes to allocate
++  m      - number of bytes to allocate
 -  result - previous memory
 
    Output Parameter:
@@ -440,7 +450,9 @@ M*/
 
    Level: developer
 
-   Note:
+   Notes:
+   `results` must have already been obtained with `PetscMalloc()`
+
    Memory is always allocated at least double aligned
 
 .seealso: `PetscMalloc()`, `PetscFree()`, `PetscNew()`
@@ -466,7 +478,7 @@ M*/
 #define PetscAddrAlign(a) ((void *)((((PETSC_UINTPTR_T)(a)) + (PETSC_MEMALIGN - 1)) & ~(PETSC_MEMALIGN - 1)))
 
 /*MC
-   PetscCalloc - Allocates a cleared (zeroed) memory region aligned to `PETSC_MEMALIGN`
+   PetscCalloc - Allocates a cleared (zeroed) memory region aligned to `PETSC_MEMALIGN`, similar to `PetscMalloc()`
 
    Synopsis:
     #include <petscsys.h>
@@ -485,9 +497,14 @@ M*/
    Notes:
    Memory is always allocated at least double aligned. This macro is useful in allocating memory pointed by void pointers
 
-   It is safe to allocate size 0 and pass the resulting pointer to `PetscFree()`.
+   It is safe to allocate with an m of 0 and pass the resulting pointer to `PetscFree()`.
 
-.seealso: `PetscFree()`, `PetscNew()`
+   However, the pointer should never be dereferenced or the program will crash.
+
+   Developer Note:
+   All `PetscCallocN()` routines call `PetscCalloc()` behind the scenes.
+
+.seealso: `PetscFree()`, `PetscNew()`, `PetscMalloc()`
 M*/
 #define PetscCalloc(m, result) PetscMallocA(1, PETSC_TRUE, __LINE__, PETSC_FUNCTION_NAME, __FILE__, ((size_t)m), (result))
 
@@ -510,7 +527,7 @@ M*/
 
    Note:
    This uses `sizeof()` of the memory type requested to determine the total memory to be allocated; therefore, you should not
-         multiply the number of elements requested by the `sizeof()` the type. For example, use
+   multiply the number of elements requested by the `sizeof()` the type. For example, use
 .vb
   PetscInt *id;
   PetscMalloc1(10,&id);
@@ -926,11 +943,14 @@ M*/
    Not Collective
 
    Output Parameter:
-.  result - memory allocated, sized to match pointer type
+.  result - memory allocated, sized to match pointer `type`
 
    Level: beginner
 
-.seealso: `PetscFree()`, `PetscMalloc()`, `PetscCalloc1()`, `PetscMalloc1()`
+   Developer Note:
+   Calls `PetscCalloc()` with the appropriate memory size obtained from `type`
+
+.seealso: `PetscFree()`, `PetscMalloc()`, `PetscCall()`, `PetscCalloc1()`, `PetscMalloc1()`
 M*/
 #define PetscNew(b) PetscCalloc1(1, (b))
 
@@ -2197,10 +2217,12 @@ PETSC_EXTERN PetscErrorCode PetscSortCount(PetscCount, PetscCount[]);
 PETSC_EXTERN PetscErrorCode PetscSortReverseInt(PetscCount, PetscInt[]);
 PETSC_EXTERN PetscErrorCode PetscSortedRemoveDupsInt(PetscInt *, PetscInt[]);
 PETSC_EXTERN PetscErrorCode PetscSortedCheckDupsInt(PetscCount, const PetscInt[], PetscBool *);
+PETSC_EXTERN PetscErrorCode PetscSortedCheckDupsCount(PetscCount, const PetscCount[], PetscBool *);
 PETSC_EXTERN PetscErrorCode PetscSortRemoveDupsInt(PetscInt *, PetscInt[]);
 PETSC_EXTERN PetscErrorCode PetscCheckDupsInt(PetscInt, const PetscInt[], PetscBool *);
 PETSC_EXTERN PetscErrorCode PetscFindInt(PetscInt, PetscCount, const PetscInt[], PetscInt *);
 PETSC_EXTERN PetscErrorCode PetscFindMPIInt(PetscMPIInt, PetscCount, const PetscMPIInt[], PetscInt *);
+PETSC_EXTERN PetscErrorCode PetscFindCount(PetscCount, PetscCount, const PetscCount[], PetscCount *);
 PETSC_EXTERN PetscErrorCode PetscSortIntWithPermutation(PetscInt, const PetscInt[], PetscInt[]);
 PETSC_EXTERN PetscErrorCode PetscSortStrWithPermutation(PetscInt, const char *[], PetscInt[]);
 PETSC_EXTERN PetscErrorCode PetscSortIntWithArray(PetscCount, PetscInt[], PetscInt[]);
@@ -2613,6 +2635,16 @@ static inline PetscMPIInt MPIU_Reduce_local(const void *inbuf, void *inoutbuf, M
 }
   #endif
 
+  #if !defined(PETSC_USE_64BIT_INDICES)
+    #define MPIU_Scatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm) MPI_Scatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm)
+    #define MPIU_Gatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm)  MPI_Gatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm)
+  #else
+    #define MPIU_Scatterv(sendbuf, sendcount, displs, sendtype, recvbuf, recvcount, recvtype, root, comm) \
+      ((void)PetscError(comm, __LINE__, PETSC_FUNCTION_NAME, __FILE__, PETSC_ERR_SUP, PETSC_ERROR_INITIAL, "Must have MPI 4 support for MPI_Scatterv_c() for this functionality, upgrade your MPI"), MPI_ERR_COUNT)
+    #define MPIU_Gatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm) \
+      ((void)PetscError(comm, __LINE__, PETSC_FUNCTION_NAME, __FILE__, PETSC_ERR_SUP, PETSC_ERROR_INITIAL, "Must have MPI 4 support for MPI_Scatterv_c() for this functionality, upgrade your MPI"), MPI_ERR_COUNT)
+  #endif
+
 #else
 
   /* on 32 bit systems MPI_Count maybe 64-bit while PetscCount is 32-bit */
@@ -2645,6 +2677,47 @@ static inline PetscMPIInt MPIU_Get_count(MPI_Status *status, MPI_Datatype dtype,
   #if defined(PETSC_HAVE_MPI_REDUCE_LOCAL)
     #define MPIU_Reduce_local(inbuf, inoutbuf, count, dtype, op) MPI_Reduce_local_c(inbuf, inoutbuf, (MPI_Count)(count), dtype, op)
   #endif
+
+/*MC
+  MPIU_Scatterv - A replacement for `MPI_Scatterv()` that can be called with `PetscInt` types when PETSc is built for either 32-bit indices or 64-bit indices.
+
+  Synopsis:
+  #include <petscsys.h>
+  PetscMPIInt MPIU_Scatterv(const void *sendbuf, const PetscInt sendcounts[], const PetscInt displs[], MPI_Datatype sendtype, void *recvbuf, PetscInt recvcount, MPI_Datatype recvtype, PetscMPIInt root, MPI_Comm comm)
+
+  Collective
+
+  Input Parameters:
++ sendbuf    - address of send buffer
+. sendcounts - non-negative `PetscInt` array (of length `comm` group size) specifying the number of elements to send to each MPI process
+. displs     - `PetscInt` array (of length `comm` group size). Entry i specifies the displacement (relative to `sendbuf`) from which to take the outgoing data to process i
+. sendtype   - data type of `sendbuf` elements
+. recvcount  - number of elements in `recvbuf` (non-negative integer)
+. recvtype   - data type of `recvbuf` elements
+. root       - Rank of the MPI root process, which will dispatch the data to scatter
+- comm       - `MPI_Comm` communicator
+
+  Output Parameter:
+. recvbuf - the resulting scattered values on this MPI process
+
+  Level: developer
+
+  Notes:
+  Should be wrapped with `PetscCallMPI()` for error checking
+
+  This is different than most of the `MPIU_` wrappers in that all the count arguments are in `PetscInt`
+
+.seealso: [](stylePetscCount), `MPI_Allreduce()`, `MPIU_Gatherv()`
+M*/
+
+  #if !defined(PETSC_USE_64BIT_INDICES)
+    #define MPIU_Scatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm) MPI_Scatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm)
+    #define MPIU_Gatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm)  MPI_Gatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm)
+  #else
+    #define MPIU_Scatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm) MPI_Scatterv_c(sendbuf, (const MPI_Count *)(sendcounts), (const MPI_Aint *)(displs), sendtype, recvbuf, recvcount, recvtype, root, comm)
+    #define MPIU_Gatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm)  MPI_Gatherv_c(sendbuf, sendcount, sendtype, recvbuf, (const MPI_Count *)(recvcounts), (const MPI_Aint *)(displs), recvtype, root, comm)
+  #endif
+
 #endif
 
 PETSC_EXTERN PetscMPIInt MPIU_Allreduce_Private(const void *, void *, MPIU_Count, MPI_Datatype, MPI_Op, MPI_Comm);

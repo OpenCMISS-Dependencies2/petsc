@@ -35,9 +35,12 @@ PETSC_EXTERN PetscErrorCode MatCreate_HYPRESStruct(Mat);
 /*@C
   DMInitializePackage - This function initializes everything in the `DM` package. It is called
   from `PetscDLLibraryRegister_petscdm()` when using dynamic libraries, and on the first call to `DMCreate()`
-  or `DMDACreate()` when using shared or static libraries.
+  or similar routines when using shared or static libraries.
 
   Level: developer
+
+  Note:
+  This function never needs to be called by PETSc users.
 
 .seealso: `PetscInitialize()`
 @*/
@@ -55,6 +58,7 @@ PetscErrorCode DMInitializePackage(void)
   PetscCall(PetscClassIdRegister("DM Label", &DMLABEL_CLASSID));
   PetscCall(PetscClassIdRegister("Quadrature", &PETSCQUADRATURE_CLASSID));
   PetscCall(PetscClassIdRegister("Mesh Transform", &DMPLEXTRANSFORM_CLASSID));
+  PetscCall(PetscClassIdRegister("Swarm Cell DM", &DMSWARMCELLDM_CLASSID));
 
 #if defined(PETSC_HAVE_HYPRE)
   PetscCall(MatRegister(MATHYPRESTRUCT, MatCreate_HYPREStruct));

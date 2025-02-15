@@ -603,7 +603,6 @@ PetscErrorCode ISPartitioningCount(IS part, PetscInt len, PetscInt count[])
   MPI_Comm        comm;
   PetscInt        i, n, *lsizes;
   const PetscInt *indices;
-  PetscMPIInt     npp;
 
   PetscFunctionBegin;
   PetscCall(PetscObjectGetComm((PetscObject)part, &comm));
@@ -635,8 +634,7 @@ PetscErrorCode ISPartitioningCount(IS part, PetscInt len, PetscInt count[])
     if (indices[i] > -1) lsizes[indices[i]]++;
   }
   PetscCall(ISRestoreIndices(part, &indices));
-  PetscCall(PetscMPIIntCast(len, &npp));
-  PetscCallMPI(MPIU_Allreduce(lsizes, count, npp, MPIU_INT, MPI_SUM, comm));
+  PetscCallMPI(MPIU_Allreduce(lsizes, count, len, MPIU_INT, MPI_SUM, comm));
   PetscCall(PetscFree(lsizes));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -731,7 +729,7 @@ PetscErrorCode ISAllGather(IS is, IS *isout)
   Note:
   `ISAllGatherColors()` is clearly not scalable for large index sets.
 
-.seealso: `ISCOloringValue`, `ISColoring()`, `ISCreateGeneral()`, `ISCreateStride()`, `ISCreateBlock()`, `ISAllGather()`
+.seealso: `ISColoringValue`, `ISColoring()`, `ISCreateGeneral()`, `ISCreateStride()`, `ISCreateBlock()`, `ISAllGather()`
 @*/
 PetscErrorCode ISAllGatherColors(MPI_Comm comm, PetscInt n, ISColoringValue lindices[], PetscInt *outN, ISColoringValue *outindices[])
 {

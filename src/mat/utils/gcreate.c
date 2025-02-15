@@ -210,9 +210,7 @@ PetscErrorCode MatSetErrorIfFailure(Mat mat, PetscBool flg)
   user must ensure that they are chosen to be compatible with the
   vectors. To do this, one first considers the matrix-vector product
   'y = A x'. The `m` that is used in the above routine must match the
-  local size used in the vector creation routine `VecCreateMPI()` for 'y'.
-  Likewise, the `n` used must match that used as the local size in
-  `VecCreateMPI()` for 'x'.
+  local size of 'y'. Likewise, the `n` used must match the local size of 'x'.
 
   If `m` and `n` are not `PETSC_DECIDE`, then the values determine the `PetscLayout` of the matrix and the ranges returned by
   `MatGetOwnershipRange()`,  `MatGetOwnershipRanges()`, `MatGetOwnershipRangeColumn()`, and `MatGetOwnershipRangesColumn()`.
@@ -312,10 +310,10 @@ PetscErrorCode MatSetFromOptions(Mat B)
   PetscTryTypeMethod(B, setfromoptions, PetscOptionsObject);
 
   flg = PETSC_FALSE;
-  PetscCall(PetscOptionsBool("-mat_new_nonzero_location_err", "Generate an error if new nonzeros are created in the matrix structure (useful to test preallocation)", "MatSetOption", flg, &flg, &set));
+  PetscCall(PetscOptionsBool("-mat_new_nonzero_location_err", "Generate an error if new nonzeros are created in the matrix nonzero structure (useful to test preallocation)", "MatSetOption", flg, &flg, &set));
   if (set) PetscCall(MatSetOption(B, MAT_NEW_NONZERO_LOCATION_ERR, flg));
   flg = PETSC_FALSE;
-  PetscCall(PetscOptionsBool("-mat_new_nonzero_allocation_err", "Generate an error if new nonzeros are allocated in the matrix structure (useful to test preallocation)", "MatSetOption", flg, &flg, &set));
+  PetscCall(PetscOptionsBool("-mat_new_nonzero_allocation_err", "Generate an error if new nonzeros are allocated in the matrix nonzero structure (useful to test preallocation)", "MatSetOption", flg, &flg, &set));
   if (set) PetscCall(MatSetOption(B, MAT_NEW_NONZERO_ALLOCATION_ERR, flg));
   flg = PETSC_FALSE;
   PetscCall(PetscOptionsBool("-mat_ignore_zero_entries", "For AIJ/IS matrices this will stop zero values from creating a zero location in the matrix", "MatSetOption", flg, &flg, &set));
@@ -525,8 +523,9 @@ PetscErrorCode MatHeaderMerge(Mat A, Mat *C)
 .ve
 
   Note:
-  This can be used inside a function provided to `SNESSetJacobian()`, `TSSetRHSJacobian()`, or `TSSetIJacobian()` in cases where the user code computes an entirely new sparse matrix
-  (generally with a different nonzero pattern) for each Newton update. It is usually better to reuse the matrix structure of `A` instead of constructing an entirely new one.
+  This can be used inside a function provided to `SNESSetJacobian()`, `TSSetRHSJacobian()`, or `TSSetIJacobian()` in cases where the user code
+  computes an entirely new sparse matrix  (generally with a different matrix nonzero structure/pattern) for each Newton update.
+  It is usually better to reuse the matrix nonzero structure of `A` instead of constructing an entirely new one.
 
   Developer Note:
   This is somewhat different from `MatHeaderMerge()` it would be nice to merge the code

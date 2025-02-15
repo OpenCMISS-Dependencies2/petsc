@@ -670,8 +670,7 @@ PetscErrorCode MatRestoreRow(Mat mat, PetscInt row, PetscInt *ncols, const Petsc
   PetscValidHeaderSpecific(mat, MAT_CLASSID, 1);
   if (ncols) PetscAssertPointer(ncols, 3);
   PetscCheck(mat->assembled, PETSC_COMM_SELF, PETSC_ERR_ARG_WRONGSTATE, "Not for unassembled matrix");
-  if (!mat->ops->restorerow) PetscFunctionReturn(PETSC_SUCCESS);
-  PetscUseTypeMethod(mat, restorerow, row, ncols, (PetscInt **)cols, (PetscScalar **)vals);
+  PetscTryTypeMethod(mat, restorerow, row, ncols, (PetscInt **)cols, (PetscScalar **)vals);
   if (ncols) *ncols = 0;
   if (cols) *cols = NULL;
   if (vals) *vals = NULL;
@@ -702,8 +701,7 @@ PetscErrorCode MatGetRowUpperTriangular(Mat mat)
   PetscCheck(mat->assembled, PETSC_COMM_SELF, PETSC_ERR_ARG_WRONGSTATE, "Not for unassembled matrix");
   PetscCheck(!mat->factortype, PETSC_COMM_SELF, PETSC_ERR_ARG_WRONGSTATE, "Not for factored matrix");
   MatCheckPreallocated(mat, 1);
-  if (!mat->ops->getrowuppertriangular) PetscFunctionReturn(PETSC_SUCCESS);
-  PetscUseTypeMethod(mat, getrowuppertriangular);
+  PetscTryTypeMethod(mat, getrowuppertriangular);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -730,8 +728,7 @@ PetscErrorCode MatRestoreRowUpperTriangular(Mat mat)
   PetscCheck(mat->assembled, PETSC_COMM_SELF, PETSC_ERR_ARG_WRONGSTATE, "Not for unassembled matrix");
   PetscCheck(!mat->factortype, PETSC_COMM_SELF, PETSC_ERR_ARG_WRONGSTATE, "Not for factored matrix");
   MatCheckPreallocated(mat, 1);
-  if (!mat->ops->restorerowuppertriangular) PetscFunctionReturn(PETSC_SUCCESS);
-  PetscUseTypeMethod(mat, restorerowuppertriangular);
+  PetscTryTypeMethod(mat, restorerowuppertriangular);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -932,7 +929,7 @@ PetscErrorCode MatGetState(Mat A, PetscObjectState *state)
 }
 
 /*@
-  MatResetPreallocation - Reset matrix to use the original nonzero pattern provided by the user.
+  MatResetPreallocation - Reset matrix to use the original preallocation values provided by the user, for example with `MatXAIJSetPreallocation()`
 
   Collective
 
@@ -942,9 +939,11 @@ PetscErrorCode MatGetState(Mat A, PetscObjectState *state)
   Level: beginner
 
   Notes:
-  The allocated memory will be shrunk after calling `MatAssemblyBegin()` and `MatAssemblyEnd()` with `MAT_FINAL_ASSEMBLY`.
+  After calling `MatAssemblyBegin()` and `MatAssemblyEnd()` with `MAT_FINAL_ASSEMBLY` the matrix data structures represent the nonzeros assigned to the
+  matrix. If that space is less than the preallocated space that extra preallocated space is no longer available to take on new values. `MatResetPreallocation()`
+  makes all of the preallocation space available
 
-  Users can reset the preallocation to access the original memory.
+  Current values in the matrix are lost in this call.
 
   Currently only supported for  `MATAIJ` matrices.
 
@@ -995,20 +994,20 @@ PetscErrorCode MatResetHash(Mat A)
 }
 
 /*@
-  MatSetUp - Sets up the internal matrix data structures for later use.
+  MatSetUp - Sets up the internal matrix data structures for later use by the matrix
 
   Collective
 
   Input Parameter:
 . A - the matrix
 
-  Level: intermediate
+  Level: advanced
 
   Notes:
   If the user has not set preallocation for this matrix then an efficient algorithm will be used for the first round of
   setting values in the matrix.
 
-  This routine is called internally by other matrix functions when needed so rarely needs to be called by users
+  This routine is called internally by other `Mat` functions when needed so rarely needs to be called by users
 
 .seealso: [](ch_matrices), `Mat`, `MatMult()`, `MatCreate()`, `MatDestroy()`, `MatXAIJSetPreallocation()`
 @*/
@@ -1109,35 +1108,27 @@ PetscErrorCode MatViewFromOptions(Mat A, PetscObject obj, const char name[])
 
   Notes:
   The available visualization contexts include
-+    `PETSC_VIEWER_STDOUT_SELF` - for sequential matrices
-.    `PETSC_VIEWER_STDOUT_WORLD` - for parallel matrices created on `PETSC_COMM_WORLD`
++    `PETSC_VIEWER_STDOUT_SELF`   - for sequential matrices
+.    `PETSC_VIEWER_STDOUT_WORLD`  - for parallel matrices created on `PETSC_COMM_WORLD`
 .    `PETSC_VIEWER_STDOUT_`(comm) - for matrices created on MPI communicator comm
--     `PETSC_VIEWER_DRAW_WORLD` - graphical display of nonzero structure
+-     `PETSC_VIEWER_DRAW_WORLD`   - graphical display of nonzero structure
 
   The user can open alternative visualization contexts with
-+    `PetscViewerASCIIOpen()` - Outputs matrix to a specified file
-.    `PetscViewerBinaryOpen()` - Outputs matrix in binary to a
-  specified file; corresponding input uses `MatLoad()`
-.    `PetscViewerDrawOpen()` - Outputs nonzero matrix structure to
-  an X window display
--    `PetscViewerSocketOpen()` - Outputs matrix to Socket viewer.
-  Currently only the `MATSEQDENSE` and `MATAIJ`
-  matrix types support the Socket viewer.
++    `PetscViewerASCIIOpen()`  - Outputs matrix to a specified file
+.    `PetscViewerBinaryOpen()` - Outputs matrix in binary to a  specified file; corresponding input uses `MatLoad()`
+.    `PetscViewerDrawOpen()`   - Outputs nonzero matrix nonzero structure to an X window display
+-    `PetscViewerSocketOpen()` - Outputs matrix to Socket viewer, `PETSCVIEWERSOCKET`. Only the `MATSEQDENSE` and `MATAIJ` types support this viewer.
 
   The user can call `PetscViewerPushFormat()` to specify the output
   format of ASCII printed objects (when using `PETSC_VIEWER_STDOUT_SELF`,
   `PETSC_VIEWER_STDOUT_WORLD` and `PetscViewerASCIIOpen()`).  Available formats include
-+    `PETSC_VIEWER_DEFAULT` - default, prints matrix contents
-.    `PETSC_VIEWER_ASCII_MATLAB` - prints matrix contents in MATLAB format
-.    `PETSC_VIEWER_ASCII_DENSE` - prints entire matrix including zeros
-.    `PETSC_VIEWER_ASCII_COMMON` - prints matrix contents, using a sparse
-  format common among all matrix types
-.    `PETSC_VIEWER_ASCII_IMPL` - prints matrix contents, using an implementation-specific
-  format (which is in many cases the same as the default)
-.    `PETSC_VIEWER_ASCII_INFO` - prints basic information about the matrix
-  size and structure (not the matrix entries)
--    `PETSC_VIEWER_ASCII_INFO_DETAIL` - prints more detailed information about
-  the matrix structure (still not vector or matrix entries)
++    `PETSC_VIEWER_DEFAULT`           - default, prints matrix contents
+.    `PETSC_VIEWER_ASCII_MATLAB`      - prints matrix contents in MATLAB format
+.    `PETSC_VIEWER_ASCII_DENSE`       - prints entire matrix including zeros
+.    `PETSC_VIEWER_ASCII_COMMON`      - prints matrix contents, using a sparse  format common among all matrix types
+.    `PETSC_VIEWER_ASCII_IMPL`        - prints matrix contents, using an implementation-specific format (which is in many cases the same as the default)
+.    `PETSC_VIEWER_ASCII_INFO`        - prints basic information about the matrix size and structure (not the matrix entries)
+-    `PETSC_VIEWER_ASCII_INFO_DETAIL` - prints more detailed information about the matrix nonzero structure (still not vector or matrix entries)
 
   The ASCII viewers are only recommended for small matrices on at most a moderate number of processes,
   the program will seemingly hang and take hours for larger matrices, for larger matrices one should use the binary format.
@@ -4405,7 +4396,7 @@ PetscErrorCode MatCopy(Mat A, Mat B, MatStructure str)
 . newtype - new matrix type.  Use `MATSAME` to create a new matrix of the
             same type as the original matrix.
 - reuse   - denotes if the destination matrix is to be created or reused.
-            Use `MAT_INPLACE_MATRIX` for inplace conversion (that is when you want the input mat to be changed to contain the matrix in the new format), otherwise use
+            Use `MAT_INPLACE_MATRIX` for inplace conversion (that is when you want the input `Mat` to be changed to contain the matrix in the new format), otherwise use
             `MAT_INITIAL_MATRIX` or `MAT_REUSE_MATRIX` (can only be used after the first call was made with `MAT_INITIAL_MATRIX`, causes the matrix space in M to be reused).
 
   Output Parameter:
@@ -5388,7 +5379,7 @@ PetscErrorCode MatTransposeSetPrecursor(Mat mat, Mat B)
 }
 
 /*@
-  MatTranspose - Computes an in-place or out-of-place transpose of a matrix.
+  MatTranspose - Computes the transpose of a matrix, either in-place or out-of-place.
 
   Collective
 
@@ -5397,23 +5388,24 @@ PetscErrorCode MatTransposeSetPrecursor(Mat mat, Mat B)
 - reuse - either `MAT_INITIAL_MATRIX`, `MAT_REUSE_MATRIX`, or `MAT_INPLACE_MATRIX`
 
   Output Parameter:
-. B - the transpose
+. B - the transpose of the matrix
 
   Level: intermediate
 
   Notes:
   If you use `MAT_INPLACE_MATRIX` then you must pass in `&mat` for `B`
 
-  `MAT_REUSE_MATRIX` uses the `B` matrix obtained from a previous call to this function with `MAT_INITIAL_MATRIX`. If you already have a matrix to contain the
+  `MAT_REUSE_MATRIX` uses the `B` matrix obtained from a previous call to this function with `MAT_INITIAL_MATRIX` to store the transpose. If you already have a matrix to contain the
   transpose, call `MatTransposeSetPrecursor(mat, B)` before calling this routine.
 
-  If the nonzero structure of mat changed from the previous call to this function with the same matrices an error will be generated for some matrix types.
+  If the nonzero structure of `mat` changed from the previous call to this function with the same matrices an error will be generated for some matrix types.
 
-  Consider using `MatCreateTranspose()` instead if you only need a matrix that behaves like the transpose, but don't need the storage to be changed.
+  Consider using `MatCreateTranspose()` instead if you only need a matrix that behaves like the transpose but don't need the storage to be changed.
+  For example, the result of `MatCreateTranspose()` will compute the transpose of the given matrix times a vector for matrix-vector products computed with `MatMult()`.
 
-  If mat is unchanged from the last call this function returns immediately without recomputing the result
+  If `mat` is unchanged from the last call this function returns immediately without recomputing the result
 
-  If you only need the symbolic transpose, and not the numerical values, use `MatTransposeSymbolic()`
+  If you only need the symbolic transpose of a matrix, and not the numerical values, use `MatTransposeSymbolic()`
 
 .seealso: [](ch_matrices), `Mat`, `MatTransposeSetPrecursor()`, `MatMultTranspose()`, `MatMultTransposeAdd()`, `MatIsTranspose()`, `MatReuse`, `MAT_INITIAL_MATRIX`, `MAT_REUSE_MATRIX`, `MAT_INPLACE_MATRIX`,
           `MatTransposeSymbolic()`, `MatCreateTranspose()`
@@ -5685,7 +5677,11 @@ PetscErrorCode MatPermute(Mat mat, IS row, IS col, Mat *B)
 
   Level: intermediate
 
-.seealso: [](ch_matrices), `Mat`
+  Note:
+  If either of the matrix is "matrix-free", meaning the matrix entries are not stored explicitly then equality is determined by comparing the results of several matrix-vector product
+  using several randomly created vectors, see `MatMultEqual()`.
+
+.seealso: [](ch_matrices), `Mat`, `MatMultEqual()`
 @*/
 PetscErrorCode MatEqual(Mat A, Mat B, PetscBool *flg)
 {
@@ -6404,7 +6400,7 @@ PetscErrorCode MatZeroRowsColumnsIS(Mat mat, IS is, PetscScalar diag, Vec x, Vec
   from the matrix.
 
   Unlike `MatZeroRowsColumns()` for the `MATAIJ` and `MATBAIJ` matrix formats this removes the old nonzero structure, from the eliminated rows of the matrix
-  but does not release memory.  Because of this removal matrix-vector products with the adjusted matrix will be a bit faster. For the dense and block diagonal
+  but does not release memory.  Because of this removal matrix-vector products with the adjusted matrix will be a bit faster. For the dense
   formats this does not alter the nonzero structure.
 
   If the option `MatSetOption`(mat,`MAT_KEEP_NONZERO_PATTERN`,`PETSC_TRUE`) the nonzero structure
@@ -6447,13 +6443,13 @@ PetscErrorCode MatZeroRows(Mat mat, PetscInt numRows, const PetscInt rows[], Pet
 
 /*@
   MatZeroRowsIS - Zeros all entries (except possibly the main diagonal)
-  of a set of rows of a matrix.
+  of a set of rows of a matrix indicated by an `IS`
 
   Collective
 
   Input Parameters:
 + mat  - the matrix
-. is   - index set of rows to remove (if `NULL` then no row is removed)
+. is   - index set, `IS`, of rows to remove (if `NULL` then no row is removed)
 . diag - value put in all diagonals of eliminated rows
 . x    - optional vector of solutions for zeroed rows (other entries in vector are not used)
 - b    - optional vector of right-hand side, that will be adjusted by provided solution
@@ -6464,7 +6460,7 @@ PetscErrorCode MatZeroRows(Mat mat, PetscInt numRows, const PetscInt rows[], Pet
   See `MatZeroRows()` for details on how this routine operates.
 
 .seealso: [](ch_matrices), `Mat`, `MatZeroRows()`, `MatZeroRowsColumns()`, `MatZeroRowsLocalIS()`, `MatZeroRowsStencil()`, `MatZeroEntries()`, `MatZeroRowsLocal()`, `MatSetOption()`,
-          `MatZeroRowsColumnsLocal()`, `MatZeroRowsColumnsLocalIS()`, `MatZeroRowsColumnsIS()`, `MatZeroRowsColumnsStencil()`
+          `MatZeroRowsColumnsLocal()`, `MatZeroRowsColumnsLocalIS()`, `MatZeroRowsColumnsIS()`, `MatZeroRowsColumnsStencil()`, `IS`
 @*/
 PetscErrorCode MatZeroRowsIS(Mat mat, IS is, PetscScalar diag, Vec x, Vec b)
 {
@@ -6486,14 +6482,14 @@ PetscErrorCode MatZeroRowsIS(Mat mat, IS is, PetscScalar diag, Vec x, Vec b)
 
 /*@
   MatZeroRowsStencil - Zeros all entries (except possibly the main diagonal)
-  of a set of rows of a matrix. These rows must be local to the process.
+  of a set of rows of a matrix indicated by a `MatStencil`. These rows must be local to the process.
 
   Collective
 
   Input Parameters:
 + mat     - the matrix
 . numRows - the number of rows to remove
-. rows    - the grid coordinates (and component number when dof > 1) for matrix rows
+. rows    - the grid coordinates (and component number when dof > 1) for matrix rows indicated by an array of `MatStencil`
 . diag    - value put in all diagonals of eliminated rows (0.0 will even eliminate diagonal entry)
 . x       - optional vector of solutions for zeroed rows (other entries in vector are not used)
 - b       - optional vector of right-hand side, that will be adjusted by provided solution
@@ -6525,7 +6521,7 @@ $     MatStencil idxm(4, m)
    etc
 .ve
 
-.seealso: [](ch_matrices), `Mat`, `MatZeroRowsIS()`, `MatZeroRowsColumns()`, `MatZeroRowsLocalIS()`, `MatZeroRows()`, `MatZeroEntries()`, `MatZeroRowsLocal()`, `MatSetOption()`,
+.seealso: [](ch_matrices), `Mat`, `MatStencil`, `MatZeroRowsIS()`, `MatZeroRowsColumns()`, `MatZeroRowsLocalIS()`, `MatZeroRows()`, `MatZeroEntries()`, `MatZeroRowsLocal()`, `MatSetOption()`,
           `MatZeroRowsColumnsLocal()`, `MatZeroRowsColumnsLocalIS()`, `MatZeroRowsColumnsIS()`, `MatZeroRowsColumnsStencil()`
 @*/
 PetscErrorCode MatZeroRowsStencil(Mat mat, PetscInt numRows, const MatStencil rows[], PetscScalar diag, Vec x, Vec b)
@@ -7787,7 +7783,7 @@ PetscErrorCode MatComputeVariableBlockEnvelope(Mat mat)
   PetscCall(PetscMalloc1(lblocks, &edata->is));
   for (PetscInt i = 0; i < lblocks; i++) PetscCall(ISCreateStride(PETSC_COMM_SELF, sizes[i], starts[i], 1, &edata->is[i]));
 
-  /* Create the resulting inverse matrix structure with preallocation information */
+  /* Create the resulting inverse matrix nonzero structure with preallocation information */
   PetscCall(MatCreate(PetscObjectComm((PetscObject)mat), &edata->C));
   PetscCall(MatSetSizes(edata->C, mat->rmap->n, mat->cmap->n, mat->rmap->N, mat->cmap->N));
   PetscCall(MatSetBlockSizesFromMats(edata->C, mat, mat));
@@ -9156,7 +9152,7 @@ PetscErrorCode MatRestoreNullSpaces(PetscInt n, Mat mat[], MatNullSpace *nullsp[
 
   Overwrites any previous null space that may have been attached. You can remove the null space from the matrix object by calling this routine with an nullsp of `NULL`
 
-  For inconsistent singular systems (linear systems where the right-hand side is not in the range of the operator) the `KSP` residuals will not converge to
+  For inconsistent singular systems (linear systems where the right-hand side is not in the range of the operator) the `KSP` residuals will not converge
   to zero but the linear system will still be solved in a least squares sense.
 
   The fundamental theorem of linear algebra (Gilbert Strang, Introduction to Applied Mathematics, page 72) states that
@@ -10276,8 +10272,8 @@ PetscErrorCode MatPtAP(Mat A, Mat P, MatReuse scall, PetscReal fill, Mat *C)
 
   This routine is currently only implemented for pairs of `MATAIJ` matrices and classes
   which inherit from `MATAIJ`. Due to PETSc sparse matrix block row distribution among processes,
-  parallel `MatRARt()` is implemented via explicit transpose of `R`, which could be very expensive.
-  We recommend using `MatPtAP()`.
+  the parallel `MatRARt()` is implemented computing the explicit transpose of `R`, which can be very expensive.
+  We recommend using `MatPtAP()` when possible.
 
   The deprecated `PETSC_DEFAULT` in `fill` also means use the current value
 

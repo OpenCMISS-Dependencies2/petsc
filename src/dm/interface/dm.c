@@ -26,7 +26,7 @@ const char *const DMCopyLabelsModes[] = {"replace", "keep", "fail", "DMCopyLabel
 
 /*@
   DMCreate - Creates an empty `DM` object. `DM`s are the abstract objects in PETSc that mediate between meshes and discretizations and the
-  algebraic solvers, time integrators, and optimization algorithms.
+  algebraic solvers, time integrators, and optimization algorithms in PETSc.
 
   Collective
 
@@ -42,7 +42,9 @@ const char *const DMCopyLabelsModes[] = {"replace", "keep", "fail", "DMCopyLabel
   See `DMType` for a brief summary of available `DM`.
 
   The type must then be set with `DMSetType()`. If you never call `DMSetType()` it will generate an
-  error when you try to use the dm.
+  error when you try to use the `dm`.
+
+  `DM` is an orphan initialism or orphan acronym, the letters have no meaning and never did.
 
 .seealso: [](ch_dmbase), `DM`, `DMSetType()`, `DMType`, `DMDACreate()`, `DMDA`, `DMSLICED`, `DMCOMPOSITE`, `DMPLEX`, `DMMOAB`, `DMNETWORK`
 @*/
@@ -1584,14 +1586,14 @@ PetscErrorCode DMSetMatrixPreallocateOnly(DM dm, PetscBool only)
 }
 
 /*@
-  DMSetMatrixStructureOnly - When `DMCreateMatrix()` is called, the matrix structure will be created
+  DMSetMatrixStructureOnly - When `DMCreateMatrix()` is called, the matrix nonzero structure will be created
   but the array for numerical values will not be allocated.
 
   Logically Collective
 
   Input Parameters:
 + dm   - the `DM`
-- only - `PETSC_TRUE` if you only want matrix structure
+- only - `PETSC_TRUE` if you only want matrix nonzero structure
 
   Level: developer
 
@@ -6433,6 +6435,7 @@ PetscErrorCode DMGetOutputDM(DM dm, DM *odm)
   PetscSection section;
   IS           perm;
   PetscBool    hasConstraints, newDM, gnewDM;
+  PetscInt     num_face_sfs = 0;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(dm, DM_CLASSID, 1);
@@ -6440,7 +6443,8 @@ PetscErrorCode DMGetOutputDM(DM dm, DM *odm)
   PetscCall(DMGetLocalSection(dm, &section));
   PetscCall(PetscSectionHasConstraints(section, &hasConstraints));
   PetscCall(PetscSectionGetPermutation(section, &perm));
-  newDM = hasConstraints || perm ? PETSC_TRUE : PETSC_FALSE;
+  PetscCall(DMPlexGetIsoperiodicFaceSF(dm, &num_face_sfs, NULL));
+  newDM = hasConstraints || perm || (num_face_sfs > 0) ? PETSC_TRUE : PETSC_FALSE;
   PetscCallMPI(MPIU_Allreduce(&newDM, &gnewDM, 1, MPIU_BOOL, MPI_LOR, PetscObjectComm((PetscObject)dm)));
   if (!gnewDM) {
     *odm = dm;
@@ -6448,7 +6452,7 @@ PetscErrorCode DMGetOutputDM(DM dm, DM *odm)
   }
   if (!dm->dmBC) {
     PetscSection newSection, gsection;
-    PetscSF      sf;
+    PetscSF      sf, sfNatural;
     PetscBool    usePerm = dm->ignorePermOutput ? PETSC_FALSE : PETSC_TRUE;
 
     PetscCall(DMClone(dm, &dm->dmBC));
@@ -6456,6 +6460,8 @@ PetscErrorCode DMGetOutputDM(DM dm, DM *odm)
     PetscCall(PetscSectionClone(section, &newSection));
     PetscCall(DMSetLocalSection(dm->dmBC, newSection));
     PetscCall(PetscSectionDestroy(&newSection));
+    PetscCall(DMGetNaturalSF(dm, &sfNatural));
+    PetscCall(DMSetNaturalSF(dm->dmBC, sfNatural));
     PetscCall(DMGetPointSF(dm->dmBC, &sf));
     PetscCall(PetscSectionCreateGlobalSection(section, sf, usePerm, PETSC_TRUE, PETSC_FALSE, &gsection));
     PetscCall(DMSetGlobalSection(dm->dmBC, gsection));

@@ -594,7 +594,7 @@ PetscErrorCode SNESLineSearchPreCheckPicard(SNESLineSearch linesearch, Vec X, Ve
 - Y     - The current search direction, on output the direction determined by the linesearch, i.e. Xnew = Xold - lambda*Y
 
   Options Database Keys:
-+ -snes_linesearch_type                - basic (or equivalently none), bt, l2, cp, nleqerr, shell
++ -snes_linesearch_type                - basic (or equivalently none), bt, l2, cp, nleqerr, bisection, shell
 . -snes_linesearch_monitor [:filename] - Print progress of line searches
 . -snes_linesearch_damping             - The linesearch damping parameter, default is 1.0 (no damping)
 . -snes_linesearch_norms               - Turn on/off the linesearch norms computation (SNESLineSearchSetComputeNorms())
@@ -789,7 +789,7 @@ PetscErrorCode SNESLineSearchMonitorSetFromOptions(SNESLineSearch ls, const char
 . linesearch - a `SNESLineSearch` line search context
 
   Options Database Keys:
-+ -snes_linesearch_type <type>                                      - basic (or equivalently none), bt, l2, cp, nleqerr, shell
++ -snes_linesearch_type <type>                                      - basic (or equivalently none), bt, l2, cp, nleqerr, bisection, shell
 . -snes_linesearch_order <order>                                    - 1, 2, 3.  Most types only support certain orders (bt supports 2 or 3)
 . -snes_linesearch_norms                                            - Turn on/off the linesearch norms for the basic linesearch typem (`SNESLineSearchSetComputeNorms()`)
 . -snes_linesearch_minlambda                                        - The minimum step length
@@ -937,7 +937,7 @@ PetscErrorCode SNESLineSearchGetType(SNESLineSearch linesearch, SNESLineSearchTy
 }
 
 /*@
-  SNESLineSearchSetType - Sets the `SNESLinesearchType` of a `SNESLineSearch`
+  SNESLineSearchSetType - Sets the `SNESLinesearchType` of a `SNESLineSearch` object to indicate the line search algorithm that should be used by a given `SNES` solver
 
   Logically Collective
 
@@ -950,7 +950,11 @@ PetscErrorCode SNESLineSearchGetType(SNESLineSearch linesearch, SNESLineSearchTy
 
   Level: intermediate
 
-.seealso: [](ch_snes), `SNES`, `SNESLineSearch`, `SNESLineSearchType`, `SNESLineSearchCreate()`, `SNESLineSearchSetFromOptions()`, `SNESLineSearchGetType()`
+  Note:
+  The `SNESLineSearch` object is generally obtained with `SNESGetLineSearch()`
+
+.seealso: [](ch_snes), `SNES`, `SNESLineSearch`, `SNESLineSearchType`, `SNESLineSearchCreate()`, `SNESLineSearchSetFromOptions()`, `SNESLineSearchGetType()`,
+          `SNESGetLineSearch()`
 @*/
 PetscErrorCode SNESLineSearchSetType(SNESLineSearch linesearch, SNESLineSearchType type)
 {

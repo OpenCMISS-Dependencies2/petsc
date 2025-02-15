@@ -1624,7 +1624,6 @@ PetscErrorCode DMComputeL2FieldDiff_Plex(DM dm, PetscReal time, PetscErrorCode (
   PetscReal     *localDiff;
   PetscInt       dim, depth, dE, Nf, f, Nds, s;
   PetscBool      transform;
-  PetscMPIInt    Nfi;
 
   PetscFunctionBegin;
   PetscCall(DMGetDimension(dm, &dim));
@@ -1766,8 +1765,7 @@ PetscErrorCode DMComputeL2FieldDiff_Plex(DM dm, PetscReal time, PetscErrorCode (
     PetscCall(PetscFree6(funcVal, interpolant, coords, fegeom.detJ, fegeom.J, fegeom.invJ));
   }
   PetscCall(DMRestoreLocalVector(dm, &localX));
-  PetscCall(PetscMPIIntCast(Nf, &Nfi));
-  PetscCallMPI(MPIU_Allreduce(localDiff, diff, Nfi, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)dm)));
+  PetscCallMPI(MPIU_Allreduce(localDiff, diff, Nf, MPIU_REAL, MPIU_SUM, PetscObjectComm((PetscObject)dm)));
   PetscCall(PetscFree(localDiff));
   for (f = 0; f < Nf; ++f) diff[f] = PetscSqrtReal(diff[f]);
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -2525,7 +2523,6 @@ PetscErrorCode DMPlexComputeIntegralFEM(DM dm, Vec X, PetscScalar *integral, voi
   PetscScalar *cintegral, *lintegral;
   PetscInt     Nf, f, cellHeight, cStart, cEnd, cell;
   Vec          locX;
-  PetscMPIInt  Nfi;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(dm, DM_CLASSID, 1);
@@ -2553,8 +2550,7 @@ PetscErrorCode DMPlexComputeIntegralFEM(DM dm, Vec X, PetscScalar *integral, voi
     if (printFEM > 1) PetscCall(DMPrintCellVector(cell, "Cell Integral", Nf, &cintegral[c * Nf]));
     for (f = 0; f < Nf; ++f) lintegral[f] += cintegral[c * Nf + f];
   }
-  PetscCall(PetscMPIIntCast(Nf, &Nfi));
-  PetscCallMPI(MPIU_Allreduce(lintegral, integral, Nfi, MPIU_SCALAR, MPIU_SUM, PetscObjectComm((PetscObject)dm)));
+  PetscCallMPI(MPIU_Allreduce(lintegral, integral, Nf, MPIU_SCALAR, MPIU_SUM, PetscObjectComm((PetscObject)dm)));
   if (printFEM) {
     PetscCall(PetscPrintf(PetscObjectComm((PetscObject)dm), "Integral:"));
     for (f = 0; f < Nf; ++f) PetscCall(PetscPrintf(PetscObjectComm((PetscObject)dm), " %g", (double)PetscRealPart(integral[f])));
@@ -6090,16 +6086,14 @@ PetscErrorCode DMPlexComputeJacobian_Internal(DM dm, PetscFormKey key, IS cellIS
   PetscCall(ISRestorePointRange(cellIS, &cStart, &cEnd, &cells));
   if (hasFV) PetscCall(MatSetOption(JacP, MAT_IGNORE_ZERO_ENTRIES, PETSC_FALSE));
   PetscCall(PetscFree5(u, u_t, elemMat, elemMatP, elemMatD));
-  if (dmAux) {
-    PetscCall(PetscFree(a));
-    PetscCall(DMDestroy(&plex));
-  }
+  if (dmAux) PetscCall(PetscFree(a));
   /* Compute boundary integrals */
   PetscCall(DMPlexComputeBdJacobian_Internal(dm, X, X_t, t, X_tShift, Jac, JacP, user));
   /* Assemble matrix */
 end: {
   PetscBool assOp = hasJac && hasPrec ? PETSC_TRUE : PETSC_FALSE, gassOp;
 
+  if (dmAux) PetscCall(DMDestroy(&plex));
   PetscCallMPI(MPIU_Allreduce(&assOp, &gassOp, 1, MPIU_BOOL, MPI_LOR, PetscObjectComm((PetscObject)dm)));
   if (hasJac && hasPrec) {
     PetscCall(MatAssemblyBegin(Jac, MAT_FINAL_ASSEMBLY));
@@ -6637,7 +6631,7 @@ static void f0_x2(PetscInt dim, PetscInt Nf, PetscInt NfAux, const PetscInt uOff
   Level: intermediate
 
   Note:
-  The `moments` array should be of length Nc + 2, where Nc is the number of components for the field.
+  The `moments` array should be of length cdim + 2, where cdim is the number of components for the coordinate field.
 
 .seealso: `DM`, `DMPLEX`, `DMSwarmComputeMoments()`
 @*/
@@ -6646,31 +6640,31 @@ PetscErrorCode DMPlexComputeMoments(DM dm, Vec u, PetscReal moments[])
   PetscDS            ds;
   PetscScalar        mom, constants[1];
   const PetscScalar *oldConstants;
-  PetscInt           Nf, field = 0, Ncon, *comp;
+  PetscInt           cdim, Nf, field = 0, Ncon;
   MPI_Comm           comm;
   void              *user;
 
   PetscFunctionBeginUser;
   PetscCall(PetscObjectGetComm((PetscObject)dm, &comm));
+  PetscCall(DMGetCoordinateDim(dm, &cdim));
   PetscCall(DMGetApplicationContext(dm, &user));
   PetscCall(DMGetDS(dm, &ds));
   PetscCall(PetscDSGetNumFields(ds, &Nf));
-  PetscCall(PetscDSGetComponents(ds, &comp));
   PetscCall(PetscDSGetConstants(ds, &Ncon, &oldConstants));
-  PetscCall(PetscDSSetConstants(ds, 1, constants));
   PetscCheck(Nf == 1, comm, PETSC_ERR_ARG_WRONG, "We currently only support 1 field, not %" PetscInt_FMT, Nf);
   PetscCall(PetscDSSetObjective(ds, field, &f0_1));
   PetscCall(DMPlexComputeIntegralFEM(dm, u, &mom, user));
   moments[0] = PetscRealPart(mom);
-  for (PetscInt c = 0; c < comp[0]; ++c) {
+  for (PetscInt c = 0; c < cdim; ++c) {
     constants[0] = c;
+    PetscCall(PetscDSSetConstants(ds, 1, constants));
     PetscCall(PetscDSSetObjective(ds, field, &f0_x));
     PetscCall(DMPlexComputeIntegralFEM(dm, u, &mom, user));
     moments[c + 1] = PetscRealPart(mom);
   }
   PetscCall(PetscDSSetObjective(ds, field, &f0_x2));
   PetscCall(DMPlexComputeIntegralFEM(dm, u, &mom, user));
-  moments[comp[0] + 1] = PetscRealPart(mom);
+  moments[cdim + 1] = PetscRealPart(mom);
   PetscCall(PetscDSSetConstants(ds, Ncon, (PetscScalar *)oldConstants));
   PetscFunctionReturn(PETSC_SUCCESS);
 }

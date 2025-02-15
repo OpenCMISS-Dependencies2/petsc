@@ -663,6 +663,12 @@ static PetscErrorCode MatView_SeqAIJ_Binary(Mat mat, PetscViewer viewer)
   /* fill in and store row lengths */
   PetscCall(PetscMalloc1(m, &rowlens));
   for (i = 0; i < m; i++) rowlens[i] = A->i[i + 1] - A->i[i];
+  if (PetscDefined(USE_DEBUG)) {
+    PetscInt mnz = 0;
+
+    for (i = 0; i < m; i++) mnz += rowlens[i];
+    PetscCheck(nz == mnz, PETSC_COMM_SELF, PETSC_ERR_PLIB, "Row lens %" PetscInt_FMT " do not sum to nz %" PetscInt_FMT, mnz, nz);
+  }
   PetscCall(PetscViewerBinaryWrite(viewer, rowlens, m, PETSC_INT));
   PetscCall(PetscFree(rowlens));
   /* store column indices */
@@ -1690,7 +1696,7 @@ PetscErrorCode MatMultAdd_SeqAIJ(Mat A, Vec xx, Vec yy, Vec zz)
 }
 
 /*
-     Adds diagonal pointers to sparse matrix structure.
+     Adds diagonal pointers to sparse matrix nonzero structure.
 */
 PetscErrorCode MatMarkDiagonal_SeqAIJ(Mat A)
 {
@@ -4734,10 +4740,10 @@ PetscErrorCode MatSetPreallocationCOO_SeqAIJ(Mat mat, PetscCount coo_n, PetscInt
         PetscCount tmp;
         for (p = start; p < end; p++) {
           if (j[p] == row && p != start) {
-            j[p]        = j[start];
+            j[p]        = j[start]; // swap j[], so that the diagonal value will go first (manipulated by perm[])
             j[start]    = row;
             tmp         = perm[start];
-            perm[start] = perm[p];
+            perm[start] = perm[p]; // also swap perm[] so we can save the call to PetscSortIntWithCountArray() below
             perm[p]     = tmp;
             break;
           }
@@ -4756,7 +4762,7 @@ PetscErrorCode MatSetPreallocationCOO_SeqAIJ(Mat mat, PetscCount coo_n, PetscInt
         }
       }
     }
-    // sort by columns in a row
+    // sort by columns in a row. perm[] indicates their original order
     if (!strictly_sorted) PetscCall(PetscSortIntWithCountArray(end - start, j + start, perm + start));
 
     if (strictly_sorted) { // fast path to set Aj[], jmap[], Ai[], nnz, q

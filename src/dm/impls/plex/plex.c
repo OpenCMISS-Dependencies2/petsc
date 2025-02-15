@@ -323,41 +323,59 @@ PetscErrorCode DMPlexVecView1D(DM dm, PetscInt n, Vec u[], PetscViewer viewer)
   PetscCall(DMPlexGetDepthStratum(dm, 0, &vStart, &vEnd));
   PetscCall(DMPlexGetDepthStratum(dm, 1, &eStart, &eEnd));
   PetscSection s;
-  PetscInt     dof;
+  PetscInt     cdof, vdof;
 
   PetscCall(DMGetLocalSection(dm, &s));
-  PetscCall(PetscSectionGetDof(s, eStart, &dof));
-  if (dof) {
-    // P_2
-    PetscInt vFirst = -1;
+  PetscCall(PetscSectionGetDof(s, eStart, &cdof));
+  PetscCall(PetscSectionGetDof(s, vStart, &vdof));
+  if (cdof) {
+    if (vdof) {
+      // P_2
+      PetscInt vFirst = -1;
 
-    for (PetscInt e = eStart; e < eEnd; ++e) {
-      PetscScalar    *xa, *xb, *svals;
-      const PetscInt *cone;
+      for (PetscInt e = eStart; e < eEnd; ++e) {
+        PetscScalar    *xa, *xb, *svals;
+        const PetscInt *cone;
 
-      PetscCall(DMPlexGetCone(dm, e, &cone));
-      PetscCall(DMPlexPointLocalRead(cdm, cone[0], coords, &xa));
-      PetscCall(DMPlexPointLocalRead(cdm, cone[1], coords, &xb));
-      if (e == eStart) vFirst = cone[0];
-      for (PetscInt i = 0; i < n; ++i) {
-        PetscCall(DMPlexPointLocalRead(dm, cone[0], sol[i], &svals));
-        for (PetscInt l = 0; l < Nl; ++l) vals[i * Nl + l] = PetscRealPart(svals[l]);
+        PetscCall(DMPlexGetCone(dm, e, &cone));
+        PetscCall(DMPlexPointLocalRead(cdm, cone[0], coords, &xa));
+        PetscCall(DMPlexPointLocalRead(cdm, cone[1], coords, &xb));
+        if (e == eStart) vFirst = cone[0];
+        for (PetscInt i = 0; i < n; ++i) {
+          PetscCall(DMPlexPointLocalRead(dm, cone[0], sol[i], &svals));
+          for (PetscInt l = 0; l < Nl; ++l) vals[i * Nl + l] = PetscRealPart(svals[l]);
+        }
+        PetscCall(PetscDrawLGAddCommonPoint(lg, PetscRealPart(xa[0]), vals));
+        if (e == eEnd - 1 && cone[1] != vFirst) {
+          for (PetscInt i = 0; i < n; ++i) {
+            PetscCall(DMPlexPointLocalRead(dm, e, sol[i], &svals));
+            for (PetscInt l = 0; l < Nl; ++l) vals[i * Nl + l] = PetscRealPart(svals[l]);
+          }
+          PetscCall(PetscDrawLGAddCommonPoint(lg, 0.5 * (PetscRealPart(xa[0]) + PetscRealPart(xb[0])), vals));
+          for (PetscInt i = 0; i < n; ++i) {
+            PetscCall(DMPlexPointLocalRead(dm, cone[1], sol[i], &svals));
+            for (PetscInt l = 0; l < Nl; ++l) vals[i * Nl + l] = PetscRealPart(svals[l]);
+          }
+          PetscCall(PetscDrawLGAddCommonPoint(lg, PetscRealPart(xb[0]), vals));
+        }
       }
-      PetscCall(PetscDrawLGAddCommonPoint(lg, PetscRealPart(xa[0]), vals));
-      if (e == eEnd - 1 && cone[1] != vFirst) {
+    } else {
+      // P_0
+      for (PetscInt e = eStart; e < eEnd; ++e) {
+        PetscScalar    *xa, *xb, *svals;
+        const PetscInt *cone;
+
+        PetscCall(DMPlexGetCone(dm, e, &cone));
+        PetscCall(DMPlexPointLocalRead(cdm, cone[0], coords, &xa));
+        PetscCall(DMPlexPointLocalRead(cdm, cone[1], coords, &xb));
         for (PetscInt i = 0; i < n; ++i) {
           PetscCall(DMPlexPointLocalRead(dm, e, sol[i], &svals));
           for (PetscInt l = 0; l < Nl; ++l) vals[i * Nl + l] = PetscRealPart(svals[l]);
         }
         PetscCall(PetscDrawLGAddCommonPoint(lg, 0.5 * (PetscRealPart(xa[0]) + PetscRealPart(xb[0])), vals));
-        for (PetscInt i = 0; i < n; ++i) {
-          PetscCall(DMPlexPointLocalRead(dm, cone[1], sol[i], &svals));
-          for (PetscInt l = 0; l < Nl; ++l) vals[i * Nl + l] = PetscRealPart(svals[l]);
-        }
-        PetscCall(PetscDrawLGAddCommonPoint(lg, PetscRealPart(xb[0]), vals));
       }
     }
-  } else {
+  } else if (vdof) {
     // P_1
     for (PetscInt v = vStart; v < vEnd; ++v) {
       PetscScalar *x, *svals;
@@ -369,7 +387,7 @@ PetscErrorCode DMPlexVecView1D(DM dm, PetscInt n, Vec u[], PetscViewer viewer)
       }
       PetscCall(PetscDrawLGAddCommonPoint(lg, PetscRealPart(x[0]), vals));
     }
-  }
+  } else SETERRQ(PETSC_COMM_SELF, PETSC_ERR_SUP, "Discretization not supported");
   PetscCall(VecRestoreArrayRead(coordinates, &coords));
   for (PetscInt i = 0; i < n; ++i) PetscCall(VecRestoreArrayRead(u[i], &sol[i]));
   for (PetscInt l = 0; l < n * Nl; ++l) PetscCall(PetscFree(names[l]));
@@ -4614,11 +4632,13 @@ PetscErrorCode DMPlexComputeCellType_Internal(DM dm, PetscInt p, PetscInt pdepth
 {
   DMPolytopeType ct = DM_POLYTOPE_UNKNOWN;
   PetscInt       dim, depth, pheight, coneSize;
+  PetscBool      preferTensor;
 
   PetscFunctionBeginHot;
   PetscCall(DMGetDimension(dm, &dim));
   PetscCall(DMPlexGetDepth(dm, &depth));
   PetscCall(DMPlexGetConeSize(dm, p, &coneSize));
+  PetscCall(DMPlexGetInterpolatePreferTensor(dm, &preferTensor));
   pheight = depth - pdepth;
   if (depth <= 1) {
     switch (pdepth) {
@@ -4649,7 +4669,7 @@ PetscErrorCode DMPlexComputeCellType_Internal(DM dm, PetscInt p, PetscInt pdepth
         ct = DM_POLYTOPE_PYRAMID;
         break;
       case 6:
-        ct = DM_POLYTOPE_TRI_PRISM_TENSOR;
+        ct = preferTensor ? DM_POLYTOPE_TRI_PRISM_TENSOR : DM_POLYTOPE_TRI_PRISM;
         break;
       case 8:
         ct = DM_POLYTOPE_HEXAHEDRON;
@@ -4697,7 +4717,7 @@ PetscErrorCode DMPlexComputeCellType_Internal(DM dm, PetscInt p, PetscInt pdepth
           PetscCall(DMPlexGetConeSize(dm, cone[0], &faceConeSize));
           switch (faceConeSize) {
           case 3:
-            ct = DM_POLYTOPE_TRI_PRISM_TENSOR;
+            ct = preferTensor ? DM_POLYTOPE_TRI_PRISM_TENSOR : DM_POLYTOPE_TRI_PRISM;
             break;
           case 4:
             ct = DM_POLYTOPE_PYRAMID;
@@ -8997,11 +9017,10 @@ PetscErrorCode DMPlexGetVertexNumbering(DM dm, IS *globalVertexNumbers)
 @*/
 PetscErrorCode DMPlexCreatePointNumbering(DM dm, IS *globalPointNumbers)
 {
-  IS          nums[4];
-  PetscInt    depths[4], gdepths[4], starts[4];
-  PetscInt    depth, d, shift = 0;
-  PetscBool   empty = PETSC_FALSE;
-  PetscMPIInt idepth;
+  IS        nums[4];
+  PetscInt  depths[4], gdepths[4], starts[4];
+  PetscInt  depth, d, shift = 0;
+  PetscBool empty = PETSC_FALSE;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(dm, DM_CLASSID, 1);
@@ -9022,8 +9041,7 @@ PetscErrorCode DMPlexCreatePointNumbering(DM dm, IS *globalPointNumbers)
       starts[d] = -1;
     }
   else PetscCall(PetscSortIntWithArray(depth + 1, starts, depths));
-  PetscCall(PetscMPIIntCast(depth + 1, &idepth));
-  PetscCallMPI(MPIU_Allreduce(depths, gdepths, idepth, MPIU_INT, MPI_MAX, PetscObjectComm((PetscObject)dm)));
+  PetscCallMPI(MPIU_Allreduce(depths, gdepths, depth + 1, MPIU_INT, MPI_MAX, PetscObjectComm((PetscObject)dm)));
   for (d = 0; d <= depth; ++d) PetscCheck(starts[d] < 0 || depths[d] == gdepths[d], PETSC_COMM_SELF, PETSC_ERR_PLIB, "Expected depth %" PetscInt_FMT ", found %" PetscInt_FMT, depths[d], gdepths[d]);
   // Note here that 'shift' is collective, so that the numbering is stratified by depth
   for (d = 0; d <= depth; ++d) {

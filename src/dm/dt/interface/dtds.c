@@ -555,8 +555,8 @@ static PetscErrorCode PetscDSEnlarge_Static(PetscDS prob, PetscInt NfNew)
   PetscInt            *tmpk;
   PetscBool           *tmpc;
   PetscPointFunc      *tmpup;
-  PetscSimplePointFn **tmpexactSol, **tmpexactSol_t;
-  void               **tmpexactCtx, **tmpexactCtx_t;
+  PetscSimplePointFn **tmpexactSol, **tmpexactSol_t, **tmplowerBound, **tmpupperBound;
+  void               **tmpexactCtx, **tmpexactCtx_t, **tmplowerCtx, **tmpupperCtx;
   void               **tmpctx;
   PetscInt             Nf = prob->Nf, f;
 
@@ -592,19 +592,33 @@ static PetscErrorCode PetscDSEnlarge_Static(PetscDS prob, PetscInt NfNew)
   prob->update = tmpup;
   prob->ctx    = tmpctx;
   PetscCall(PetscCalloc4(NfNew, &tmpexactSol, NfNew, &tmpexactCtx, NfNew, &tmpexactSol_t, NfNew, &tmpexactCtx_t));
+  PetscCall(PetscCalloc4(NfNew, &tmplowerBound, NfNew, &tmplowerCtx, NfNew, &tmpupperBound, NfNew, &tmpupperCtx));
   for (f = 0; f < Nf; ++f) tmpexactSol[f] = prob->exactSol[f];
   for (f = 0; f < Nf; ++f) tmpexactCtx[f] = prob->exactCtx[f];
   for (f = 0; f < Nf; ++f) tmpexactSol_t[f] = prob->exactSol_t[f];
   for (f = 0; f < Nf; ++f) tmpexactCtx_t[f] = prob->exactCtx_t[f];
+  for (f = 0; f < Nf; ++f) tmplowerBound[f] = prob->lowerBound[f];
+  for (f = 0; f < Nf; ++f) tmplowerCtx[f] = prob->lowerCtx[f];
+  for (f = 0; f < Nf; ++f) tmpupperBound[f] = prob->upperBound[f];
+  for (f = 0; f < Nf; ++f) tmpupperCtx[f] = prob->upperCtx[f];
   for (f = Nf; f < NfNew; ++f) tmpexactSol[f] = NULL;
   for (f = Nf; f < NfNew; ++f) tmpexactCtx[f] = NULL;
   for (f = Nf; f < NfNew; ++f) tmpexactSol_t[f] = NULL;
   for (f = Nf; f < NfNew; ++f) tmpexactCtx_t[f] = NULL;
+  for (f = Nf; f < NfNew; ++f) tmplowerBound[f] = NULL;
+  for (f = Nf; f < NfNew; ++f) tmplowerCtx[f] = NULL;
+  for (f = Nf; f < NfNew; ++f) tmpupperBound[f] = NULL;
+  for (f = Nf; f < NfNew; ++f) tmpupperCtx[f] = NULL;
   PetscCall(PetscFree4(prob->exactSol, prob->exactCtx, prob->exactSol_t, prob->exactCtx_t));
+  PetscCall(PetscFree4(prob->lowerBound, prob->lowerCtx, prob->upperBound, prob->upperCtx));
   prob->exactSol   = tmpexactSol;
   prob->exactCtx   = tmpexactCtx;
   prob->exactSol_t = tmpexactSol_t;
   prob->exactCtx_t = tmpexactCtx_t;
+  prob->lowerBound = tmplowerBound;
+  prob->lowerCtx   = tmplowerCtx;
+  prob->upperBound = tmpupperBound;
+  prob->upperCtx   = tmpupperCtx;
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -646,6 +660,7 @@ PetscErrorCode PetscDSDestroy(PetscDS *ds)
   PetscCall(PetscWeakFormDestroy(&(*ds)->wf));
   PetscCall(PetscFree2((*ds)->update, (*ds)->ctx));
   PetscCall(PetscFree4((*ds)->exactSol, (*ds)->exactCtx, (*ds)->exactSol_t, (*ds)->exactCtx_t));
+  PetscCall(PetscFree4((*ds)->lowerBound, (*ds)->lowerCtx, (*ds)->upperBound, (*ds)->upperCtx));
   PetscTryTypeMethod(*ds, destroy);
   PetscCall(PetscDSDestroyBoundary(*ds));
   PetscCall(PetscFree((*ds)->constants));
@@ -1301,7 +1316,7 @@ PetscErrorCode PetscDSSetJetDegree(PetscDS ds, PetscInt f, PetscInt k)
   Level: intermediate
 
   Note:
-  We are using a first order FEM model for the weak form\: $  \int_\Omega \phi obj(u, u_t, \nabla u, x, t)$
+  We are using a first order FEM model for the weak form\: $  \int_\Omega \phi\,\mathrm{obj}(u, u_t, \nabla u, x, t)$
 
 .seealso: `PetscDS`, `PetscDSSetObjective()`, `PetscDSGetResidual()`
 @*/
@@ -1352,7 +1367,7 @@ PetscErrorCode PetscDSGetObjective(PetscDS ds, PetscInt f, void (**obj)(PetscInt
   Level: intermediate
 
   Note:
-  We are using a first order FEM model for the weak form\: $  \int_\Omega \phi obj(u, u_t, \nabla u, x, t)$
+  We are using a first order FEM model for the weak form\: $  \int_\Omega \phi\,\mathrm{obj}(u, u_t, \nabla u, x, t)$
 
 .seealso: `PetscDS`, `PetscDSGetObjective()`, `PetscDSSetResidual()`
 @*/
@@ -1648,7 +1663,8 @@ PetscErrorCode PetscDSHasJacobian(PetscDS ds, PetscBool *hasJac)
   We are using a first order FEM model for the weak form\:
 
   $$
-  \int_\Omega \phi g_0(u, u_t, \nabla u, x, t) \psi + \phi {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+  \int_\Omega \phi\, g_0(u, u_t, \nabla u, x, t) \psi + \phi\, {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi
+  + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
   $$
 
 .seealso: `PetscDS`, `PetscDSSetJacobian()`
@@ -1711,7 +1727,11 @@ PetscErrorCode PetscDSGetJacobian(PetscDS ds, PetscInt f, PetscInt g, void (**g0
   `g1`, `g2`, and `g3` have identical calling sequences to `g0` and are omitted for brevity.
 
   We are using a first order FEM model for the weak form\:
-  \int_\Omega \phi g_0(u, u_t, \nabla u, x, t) \psi + \phi {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+
+  $$
+  \int_\Omega \phi\, g_0(u, u_t, \nabla u, x, t) \psi + \phi\, {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi
+  + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+  $$
 
 .seealso: `PetscDS`, `PetscDSGetJacobian()`
 @*/
@@ -1821,7 +1841,11 @@ PetscErrorCode PetscDSHasJacobianPreconditioner(PetscDS ds, PetscBool *hasJacPre
   Note:
   `g1`, `g2`, and `g3` have identical calling sequences to `g0` and are omitted for brevity.
   We are using a first order FEM model for the weak form\:
-  \int_\Omega \phi g_0(u, u_t, \nabla u, x, t) \psi + \phi {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+
+  $$
+  \int_\Omega \phi\, g_0(u, u_t, \nabla u, x, t) \psi + \phi\, {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi
+  + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+  $$
 
 .seealso: `PetscDS`, `PetscDSSetJacobianPreconditioner()`, `PetscDSGetJacobian()`
 @*/
@@ -1884,7 +1908,11 @@ PetscErrorCode PetscDSGetJacobianPreconditioner(PetscDS ds, PetscInt f, PetscInt
   `g1`, `g2`, and `g3` have identical calling sequences to `g0` and are omitted for brevity.
 
   We are using a first order FEM model for the weak form\:
-  \int_\Omega \phi g_0(u, u_t, \nabla u, x, t) \psi + \phi {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+
+  $$
+  \int_\Omega \phi\, g_0(u, u_t, \nabla u, x, t) \psi + \phi\, {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi
+  + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+  $$
 
 .seealso: `PetscDS`, `PetscDSGetJacobianPreconditioner()`, `PetscDSSetJacobian()`
 @*/
@@ -1968,7 +1996,11 @@ PetscErrorCode PetscDSHasDynamicJacobian(PetscDS ds, PetscBool *hasDynJac)
   `g1`, `g2`, and `g3` have identical calling sequences to `g0` and are omitted for brevity.
 
   We are using a first order FEM model for the weak form\:
-  \int_\Omega \phi g_0(u, u_t, \nabla u, x, t) \psi + \phi {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+
+  $$
+  \int_\Omega \phi\, g_0(u, u_t, \nabla u, x, t) \psi + \phi\, {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi
+  + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+  $$
 
 .seealso: `PetscDS`, `PetscDSSetJacobian()`
 @*/
@@ -2030,7 +2062,11 @@ PetscErrorCode PetscDSGetDynamicJacobian(PetscDS ds, PetscInt f, PetscInt g, voi
   `g1`, `g2`, and `g3` have identical calling sequences to `g0` and are omitted for brevity.
 
   We are using a first order FEM model for the weak form\:
-  \int_\Omega \phi g_0(u, u_t, \nabla u, x, t) \psi + \phi {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+
+  $$
+  \int_\Omega \phi\, g_0(u, u_t, \nabla u, x, t) \psi + \phi\, {\vec g}_1(u, u_t, \nabla u, x, t) \nabla \psi
+  + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \nabla \psi
+  $$
 
 .seealso: `PetscDS`, `PetscDSGetJacobian()`
 @*/
@@ -2279,7 +2315,10 @@ PetscErrorCode PetscDSSetContext(PetscDS ds, PetscInt f, void *ctx)
   The calling sequence of `f1` is identical, and therefore omitted for brevity.
 
   We are using a first order FEM model for the weak form\:
+
+  $$
   \int_\Gamma \phi {\vec f}_0(u, u_t, \nabla u, x, t) \cdot \hat n + \nabla\phi \cdot {\overleftrightarrow f}_1(u, u_t, \nabla u, x, t) \cdot \hat n
+  $$
 
 .seealso: `PetscDS`, `PetscDSSetBdResidual()`
 @*/
@@ -2335,7 +2374,10 @@ PetscErrorCode PetscDSGetBdResidual(PetscDS ds, PetscInt f, void (**f0)(PetscInt
   The calling sequence of `f1` is identical, and therefore omitted for brevity.
 
   We are using a first order FEM model for the weak form\:
+
+  $$
   \int_\Gamma \phi {\vec f}_0(u, u_t, \nabla u, x, t) \cdot \hat n + \nabla\phi \cdot {\overleftrightarrow f}_1(u, u_t, \nabla u, x, t) \cdot \hat n
+  $$
 
 .seealso: `PetscDS`, `PetscDSGetBdResidual()`
 @*/
@@ -2416,7 +2458,11 @@ PetscErrorCode PetscDSHasBdJacobian(PetscDS ds, PetscBool *hasBdJac)
   `g1`, `g2`, and `g3` have identical calling sequences to `g0` and are omitted for brevity.
 
   We are using a first order FEM model for the weak form\:
-  \int_\Gamma \phi {\vec g}_0(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \phi {\vec g}_1(u, u_t, \nabla u, x, t) \cdot \hat n \nabla \psi + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \hat n \cdot \nabla \psi
+
+  $$
+  \int_\Gamma \phi\, {\vec g}_0(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \phi\, {\vec g}_1(u, u_t, \nabla u, x, t) \cdot \hat n \nabla \psi
+  + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \hat n \cdot \nabla \psi
+  $$
 
 .seealso: `PetscDS`, `PetscDSSetBdJacobian()`
 @*/
@@ -2479,7 +2525,11 @@ PetscErrorCode PetscDSGetBdJacobian(PetscDS ds, PetscInt f, PetscInt g, void (**
   `g1`, `g2`, and `g3` have identical calling sequences to `g0` and are omitted for brevity.
 
   We are using a first order FEM model for the weak form\:
-  \int_\Gamma \phi {\vec g}_0(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \phi {\vec g}_1(u, u_t, \nabla u, x, t) \cdot \hat n \nabla \psi + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \hat n \cdot \nabla \psi
+
+  $$
+  \int_\Gamma \phi\, {\vec g}_0(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \phi\, {\vec g}_1(u, u_t, \nabla u, x, t) \cdot \hat n \nabla \psi
+  + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \hat n \cdot \nabla \psi
+  $$
 
 .seealso: `PetscDS`, `PetscDSGetBdJacobian()`
 @*/
@@ -2565,7 +2615,11 @@ PetscErrorCode PetscDSHasBdJacobianPreconditioner(PetscDS ds, PetscBool *hasBdJa
   `g1`, `g2`, and `g3` have identical calling sequences to `g0` and are omitted for brevity.
 
   We are using a first order FEM model for the weak form\:
-  \int_\Gamma \phi {\vec g}_0(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \phi {\vec g}_1(u, u_t, \nabla u, x, t) \cdot \hat n \nabla \psi + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \hat n \cdot \nabla \psi
+
+  $$
+  \int_\Gamma \phi\, {\vec g}_0(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \phi\, {\vec g}_1(u, u_t, \nabla u, x, t) \cdot \hat n \nabla \psi
+  + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \hat n \cdot \nabla \psi
+  $$
 
 .seealso: `PetscDS`, `PetscDSSetBdJacobianPreconditioner()`
 @*/
@@ -2628,7 +2682,11 @@ PetscErrorCode PetscDSGetBdJacobianPreconditioner(PetscDS ds, PetscInt f, PetscI
   `g1`, `g2`, and `g3` have identical calling sequences to `g0` and are omitted for brevity.
 
   We are using a first order FEM model for the weak form\:
-  \int_\Gamma \phi {\vec g}_0(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \phi {\vec g}_1(u, u_t, \nabla u, x, t) \cdot \hat n \nabla \psi + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \hat n \cdot \nabla \psi
+
+  $$
+  \int_\Gamma \phi\, {\vec g}_0(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \phi\, {\vec g}_1(u, u_t, \nabla u, x, t) \cdot \hat n \nabla \psi
+  + \nabla\phi \cdot {\vec g}_2(u, u_t, \nabla u, x, t) \cdot \hat n \psi + \nabla\phi \cdot {\overleftrightarrow g}_3(u, u_t, \nabla u, x, t) \cdot \hat n \cdot \nabla \psi
+  $$
 
 .seealso: `PetscDS`, `PetscDSGetBdJacobianPreconditioner()`
 @*/
@@ -2804,6 +2862,168 @@ PetscErrorCode PetscDSSetExactSolutionTimeDerivative(PetscDS prob, PetscInt f, P
   if (ctx) {
     PetscValidFunction(ctx, 4);
     prob->exactCtx_t[f] = ctx;
+  }
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+/*@C
+  PetscDSGetLowerBound - Get the pointwise lower bound function for a given field
+
+  Not Collective
+
+  Input Parameters:
++ ds - The PetscDS
+- f  - The field number
+
+  Output Parameters:
++ lb  - lower bound for the field
+- ctx - lower bound context
+
+  Calling sequence of `lb`:
++ dim - the spatial dimension
+. t   - current time
+. x   - coordinates of the current point
+. Nc  - the number of field components
+. u   - the lower bound evaluated at the current point
+- ctx - a user context
+
+  Level: intermediate
+
+.seealso: `PetscDS`, `PetscDSSetLowerBound()`, `PetscDSGetUpperBound()`, `PetscDSGetExactSolution()`
+@*/
+PetscErrorCode PetscDSGetLowerBound(PetscDS ds, PetscInt f, PetscErrorCode (**lb)(PetscInt dim, PetscReal t, const PetscReal x[], PetscInt Nc, PetscScalar u[], void *ctx), void **ctx)
+{
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(ds, PETSCDS_CLASSID, 1);
+  PetscCheck(!(f < 0) && !(f >= ds->Nf), PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Field number %" PetscInt_FMT " must be in [0, %" PetscInt_FMT ")", f, ds->Nf);
+  if (lb) {
+    PetscAssertPointer(lb, 3);
+    *lb = ds->lowerBound[f];
+  }
+  if (ctx) {
+    PetscAssertPointer(ctx, 4);
+    *ctx = ds->lowerCtx[f];
+  }
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+/*@C
+  PetscDSSetLowerBound - Set the pointwise lower bound function for a given field
+
+  Not Collective
+
+  Input Parameters:
++ ds  - The `PetscDS`
+. f   - The field number
+. lb  - solution function for the test fields
+- ctx - solution context or `NULL`
+
+  Calling sequence of `lb`:
++ dim - the spatial dimension
+. t   - current time
+. x   - coordinates of the current point
+. Nc  - the number of field components
+. u   - the lower bound evaluated at the current point
+- ctx - a user context
+
+  Level: intermediate
+
+.seealso: `PetscDS`, `PetscDSGetLowerBound()`, `PetscDSGetUpperBound()`, `PetscDSGetExactSolution()`
+@*/
+PetscErrorCode PetscDSSetLowerBound(PetscDS ds, PetscInt f, PetscErrorCode (*lb)(PetscInt dim, PetscReal t, const PetscReal x[], PetscInt Nc, PetscScalar u[], void *ctx), void *ctx)
+{
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(ds, PETSCDS_CLASSID, 1);
+  PetscCheck(f >= 0, PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Field number %" PetscInt_FMT " must be non-negative", f);
+  PetscCall(PetscDSEnlarge_Static(ds, f + 1));
+  if (lb) {
+    PetscValidFunction(lb, 3);
+    ds->lowerBound[f] = lb;
+  }
+  if (ctx) {
+    PetscValidFunction(ctx, 4);
+    ds->lowerCtx[f] = ctx;
+  }
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+/*@C
+  PetscDSGetUpperBound - Get the pointwise upper bound function for a given field
+
+  Not Collective
+
+  Input Parameters:
++ ds - The PetscDS
+- f  - The field number
+
+  Output Parameters:
++ ub  - upper bound for the field
+- ctx - upper bound context
+
+  Calling sequence of `ub`:
++ dim - the spatial dimension
+. t   - current time
+. x   - coordinates of the current point
+. Nc  - the number of field components
+. u   - the upper bound evaluated at the current point
+- ctx - a user context
+
+  Level: intermediate
+
+.seealso: `PetscDS`, `PetscDSSetUpperBound()`, `PetscDSGetLowerBound()`, `PetscDSGetExactSolution()`
+@*/
+PetscErrorCode PetscDSGetUpperBound(PetscDS ds, PetscInt f, PetscErrorCode (**ub)(PetscInt dim, PetscReal t, const PetscReal x[], PetscInt Nc, PetscScalar u[], void *ctx), void **ctx)
+{
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(ds, PETSCDS_CLASSID, 1);
+  PetscCheck(!(f < 0) && !(f >= ds->Nf), PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Field number %" PetscInt_FMT " must be in [0, %" PetscInt_FMT ")", f, ds->Nf);
+  if (ub) {
+    PetscAssertPointer(ub, 3);
+    *ub = ds->upperBound[f];
+  }
+  if (ctx) {
+    PetscAssertPointer(ctx, 4);
+    *ctx = ds->upperCtx[f];
+  }
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+/*@C
+  PetscDSSetUpperBound - Set the pointwise upper bound function for a given field
+
+  Not Collective
+
+  Input Parameters:
++ ds  - The `PetscDS`
+. f   - The field number
+. ub  - solution function for the test fields
+- ctx - solution context or `NULL`
+
+  Calling sequence of `ub`:
++ dim - the spatial dimension
+. t   - current time
+. x   - coordinates of the current point
+. Nc  - the number of field components
+. u   - the upper bound evaluated at the current point
+- ctx - a user context
+
+  Level: intermediate
+
+.seealso: `PetscDS`, `PetscDSGetUpperBound()`, `PetscDSGetLowerBound()`, `PetscDSGetExactSolution()`
+@*/
+PetscErrorCode PetscDSSetUpperBound(PetscDS ds, PetscInt f, PetscErrorCode (*ub)(PetscInt dim, PetscReal t, const PetscReal x[], PetscInt Nc, PetscScalar u[], void *ctx), void *ctx)
+{
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(ds, PETSCDS_CLASSID, 1);
+  PetscCheck(f >= 0, PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Field number %" PetscInt_FMT " must be non-negative", f);
+  PetscCall(PetscDSEnlarge_Static(ds, f + 1));
+  if (ub) {
+    PetscValidFunction(ub, 3);
+    ds->upperBound[f] = ub;
+  }
+  if (ctx) {
+    PetscValidFunction(ctx, 4);
+    ds->upperCtx[f] = ctx;
   }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -4106,7 +4326,7 @@ PetscErrorCode PetscDSCopyConstants(PetscDS prob, PetscDS newprob)
 
   Level: intermediate
 
-.seealso: `PetscDS`, `PetscDSCopyBoundary()`, `PetscDSCopyEquations()`, `PetscDSSetResidual()`, `PetscDSSetJacobian()`, `PetscDSSetRiemannSolver()`, `PetscDSSetBdResidual()`, `PetscDSSetBdJacobian()`, `PetscDSCreate()`
+.seealso: `PetscDS`, `PetscDSCopyBoundary()`, `PetscDSCopyEquations()`, `PetscDSCopyBounds()`, `PetscDSSetResidual()`, `PetscDSSetJacobian()`, `PetscDSSetRiemannSolver()`, `PetscDSSetBdResidual()`, `PetscDSSetBdJacobian()`, `PetscDSCreate()`
 @*/
 PetscErrorCode PetscDSCopyExactSolutions(PetscDS ds, PetscDS newds)
 {
@@ -4127,6 +4347,40 @@ PetscErrorCode PetscDSCopyExactSolutions(PetscDS ds, PetscDS newds)
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
+/*@
+  PetscDSCopyBounds - Copy lower and upper solution bounds to another `PetscDS`
+
+  Not Collective
+
+  Input Parameter:
+. ds - The `PetscDS` object
+
+  Output Parameter:
+. newds - The `PetscDS` copy
+
+  Level: intermediate
+
+.seealso: `PetscDS`, `PetscDSCopyBoundary()`, `PetscDSCopyEquations()`, `PetscDSCopyExactSolutions()`, `PetscDSSetResidual()`, `PetscDSSetJacobian()`, `PetscDSSetRiemannSolver()`, `PetscDSSetBdResidual()`, `PetscDSSetBdJacobian()`, `PetscDSCreate()`
+@*/
+PetscErrorCode PetscDSCopyBounds(PetscDS ds, PetscDS newds)
+{
+  PetscSimplePointFn *bound;
+  void               *ctx;
+  PetscInt            Nf, f;
+
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(ds, PETSCDS_CLASSID, 1);
+  PetscValidHeaderSpecific(newds, PETSCDS_CLASSID, 2);
+  PetscCall(PetscDSGetNumFields(ds, &Nf));
+  for (f = 0; f < Nf; ++f) {
+    PetscCall(PetscDSGetLowerBound(ds, f, &bound, &ctx));
+    PetscCall(PetscDSSetLowerBound(newds, f, bound, ctx));
+    PetscCall(PetscDSGetUpperBound(ds, f, &bound, &ctx));
+    PetscCall(PetscDSSetUpperBound(newds, f, bound, ctx));
+  }
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
 PetscErrorCode PetscDSCopy(PetscDS ds, PetscInt minDegree, PetscInt maxDegree, DM dmNew, PetscDS dsNew)
 {
   DSBoundary b;
@@ -4137,6 +4391,7 @@ PetscErrorCode PetscDSCopy(PetscDS ds, PetscInt minDegree, PetscInt maxDegree, D
   PetscFunctionBegin;
   PetscCall(PetscDSCopyConstants(ds, dsNew));
   PetscCall(PetscDSCopyExactSolutions(ds, dsNew));
+  PetscCall(PetscDSCopyBounds(ds, dsNew));
   PetscCall(PetscDSSelectDiscretizations(ds, PETSC_DETERMINE, NULL, minDegree, maxDegree, dsNew));
   PetscCall(PetscDSCopyEquations(ds, dsNew));
   PetscCall(PetscDSGetNumFields(ds, &Nf));

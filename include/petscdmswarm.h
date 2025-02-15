@@ -28,6 +28,7 @@ typedef enum {
   DMSWARM_BASIC = 0,
   DMSWARM_PIC
 } DMSwarmType;
+PETSC_EXTERN const char *DMSwarmTypeNames[];
 
 typedef enum {
   DMSWARM_MIGRATE_BASIC = 0,
@@ -35,6 +36,7 @@ typedef enum {
   DMSWARM_MIGRATE_DMCELLEXACT,
   DMSWARM_MIGRATE_USER
 } DMSwarmMigrateType;
+PETSC_EXTERN const char *DMSwarmMigrateTypeNames[];
 
 typedef enum {
   DMSWARM_COLLECT_BASIC = 0,
@@ -42,6 +44,14 @@ typedef enum {
   DMSWARM_COLLECT_GENERAL,
   DMSWARM_COLLECT_USER
 } DMSwarmCollectType;
+PETSC_EXTERN const char *DMSwarmCollectTypeNames[];
+
+typedef enum {
+  DMSWARM_REMAP_NONE = 0,
+  DMSWARM_REMAP_PFAK,
+  DMSWARM_REMAP_COLELLA
+} DMSwarmRemapType;
+PETSC_EXTERN const char *DMSwarmRemapTypeNames[];
 
 /*E
    DMSwarmPICLayoutType - Defines the method used to define particle coordinates within each cell. The layouts are constructured using the reference cell geometry
@@ -64,19 +74,28 @@ typedef enum {
   DMSWARMPIC_LAYOUT_SUBDIVISION
 } DMSwarmPICLayoutType;
 
-PETSC_EXTERN const char *DMSwarmTypeNames[];
-PETSC_EXTERN const char *DMSwarmMigrateTypeNames[];
-PETSC_EXTERN const char *DMSwarmCollectTypeNames[];
+/*S
+    DMSwarmCellDM - PETSc object for defining a backgroudn DM for the DMSwarm particles
+
+    Level: intermediate
+
+.seealso: [](ch_dmbase), `DM`, `DMSwarmAddCellDM()`, `DMSwarmCellDMCreate()`
+S*/
+typedef struct _p_DMSwarmCellDM *DMSwarmCellDM;
+PETSC_EXTERN PetscClassId        DMSWARMCELLDM_CLASSID;
 
 PETSC_EXTERN const char DMSwarmField_pid[];
 PETSC_EXTERN const char DMSwarmField_rank[];
 PETSC_EXTERN const char DMSwarmPICField_coor[];
-PETSC_EXTERN const char DMSwarmPICField_cellid[];
 
 PETSC_EXTERN PetscErrorCode DMSwarmCreateGlobalVectorFromField(DM, const char[], Vec *);
 PETSC_EXTERN PetscErrorCode DMSwarmDestroyGlobalVectorFromField(DM, const char[], Vec *);
 PETSC_EXTERN PetscErrorCode DMSwarmCreateLocalVectorFromField(DM, const char[], Vec *);
 PETSC_EXTERN PetscErrorCode DMSwarmDestroyLocalVectorFromField(DM, const char[], Vec *);
+PETSC_EXTERN PetscErrorCode DMSwarmCreateGlobalVectorFromFields(DM, PetscInt, const char *[], Vec *);
+PETSC_EXTERN PetscErrorCode DMSwarmDestroyGlobalVectorFromFields(DM, PetscInt, const char *[], Vec *);
+PETSC_EXTERN PetscErrorCode DMSwarmCreateLocalVectorFromFields(DM, PetscInt, const char *[], Vec *);
+PETSC_EXTERN PetscErrorCode DMSwarmDestroyLocalVectorFromFields(DM, PetscInt, const char *[], Vec *);
 
 PETSC_EXTERN PetscErrorCode DMSwarmInitializeFieldRegister(DM);
 PETSC_EXTERN PetscErrorCode DMSwarmFinalizeFieldRegister(DM);
@@ -87,8 +106,6 @@ PETSC_EXTERN PetscErrorCode DMSwarmRegisterUserDatatypeField(DM, const char[], s
 PETSC_EXTERN PetscErrorCode DMSwarmGetField(DM, const char[], PetscInt *, PetscDataType *, void **);
 PETSC_EXTERN PetscErrorCode DMSwarmRestoreField(DM, const char[], PetscInt *, PetscDataType *, void **);
 PETSC_EXTERN PetscErrorCode DMSwarmGetFieldInfo(DM, const char[], PetscInt *, PetscDataType *);
-PETSC_EXTERN PetscErrorCode DMSwarmGetCoordinateField(DM, const char *[]);
-PETSC_EXTERN PetscErrorCode DMSwarmSetCoordinateField(DM, const char[]);
 
 PETSC_EXTERN PetscErrorCode DMSwarmVectorDefineField(DM, const char[]);
 PETSC_EXTERN PetscErrorCode DMSwarmVectorDefineFields(DM, PetscInt, const char *[]);
@@ -110,9 +127,13 @@ PETSC_EXTERN PetscErrorCode DMSwarmCollectViewCreate(DM);
 PETSC_EXTERN PetscErrorCode DMSwarmCollectViewDestroy(DM);
 PETSC_EXTERN PetscErrorCode DMSwarmSetCellDM(DM, DM);
 PETSC_EXTERN PetscErrorCode DMSwarmGetCellDM(DM, DM *);
-PETSC_EXTERN PetscErrorCode DMSwarmPushCellDM(DM, DM, PetscInt, const char *[], const char[]);
-PETSC_EXTERN PetscErrorCode DMSwarmPopCellDM(DM);
+PETSC_EXTERN PetscErrorCode DMSwarmGetCellDMByName(DM, const char[], DMSwarmCellDM *);
+PETSC_EXTERN PetscErrorCode DMSwarmGetCellDMNames(DM, PetscInt *, const char **[]);
+PETSC_EXTERN PetscErrorCode DMSwarmSetCellDMActive(DM, const char[]);
+PETSC_EXTERN PetscErrorCode DMSwarmGetCellDMActive(DM, DMSwarmCellDM *);
+PETSC_EXTERN PetscErrorCode DMSwarmAddCellDM(DM, DMSwarmCellDM);
 
+PETSC_EXTERN PetscErrorCode DMSwarmGetType(DM, DMSwarmType *);
 PETSC_EXTERN PetscErrorCode DMSwarmSetType(DM, DMSwarmType);
 
 PETSC_EXTERN PetscErrorCode DMSwarmSetPointsUniformCoordinates(DM, PetscReal *, PetscReal *, PetscInt *, InsertMode);
@@ -123,6 +144,7 @@ PETSC_EXTERN PetscErrorCode DMSwarmSetPointCoordinatesRandom(DM, PetscInt);
 PETSC_EXTERN PetscErrorCode DMSwarmViewFieldsXDMF(DM, const char *, PetscInt, const char **);
 PETSC_EXTERN PetscErrorCode DMSwarmViewXDMF(DM, const char *);
 
+PETSC_EXTERN PetscErrorCode DMSwarmSortDestroy(DMSwarmSort *);
 PETSC_EXTERN PetscErrorCode DMSwarmSortGetAccess(DM);
 PETSC_EXTERN PetscErrorCode DMSwarmSortRestoreAccess(DM);
 PETSC_EXTERN PetscErrorCode DMSwarmSortGetPointsPerCell(DM, PetscInt, PetscInt *, PetscInt **);
@@ -156,4 +178,19 @@ PETSC_EXTERN PetscErrorCode DMSwarmDataBucketGetDMSwarmDataFieldByName(DMSwarmDa
 PETSC_EXTERN PetscErrorCode DMSwarmDataBucketGetDMSwarmDataFieldIdByName(DMSwarmDataBucket, const char[], PetscInt *);
 PETSC_EXTERN PetscErrorCode DMSwarmDataBucketQueryDMSwarmDataFieldByName(DMSwarmDataBucket, const char[], PetscBool *);
 
+PETSC_EXTERN PetscErrorCode DMSwarmDuplicate(DM, DM *);
+PETSC_EXTERN PetscErrorCode DMSwarmRemap(DM);
+PETSC_EXTERN PetscErrorCode DMSwarmReplace(DM, DM *);
+
 PETSC_EXTERN PetscErrorCode DMSwarmComputeMoments(DM, const char[], const char[], PetscReal[]);
+
+PETSC_EXTERN PetscErrorCode DMSwarmCellDMCreate(DM, PetscInt, const char *[], PetscInt, const char *[], DMSwarmCellDM *);
+PETSC_EXTERN PetscErrorCode DMSwarmCellDMDestroy(DMSwarmCellDM *);
+PETSC_EXTERN PetscErrorCode DMSwarmCellDMView(DMSwarmCellDM, PetscViewer);
+PETSC_EXTERN PetscErrorCode DMSwarmCellDMGetDM(DMSwarmCellDM, DM *);
+PETSC_EXTERN PetscErrorCode DMSwarmCellDMGetFields(DMSwarmCellDM, PetscInt *, const char **[]);
+PETSC_EXTERN PetscErrorCode DMSwarmCellDMGetCoordinateFields(DMSwarmCellDM, PetscInt *, const char **[]);
+PETSC_EXTERN PetscErrorCode DMSwarmCellDMGetCellID(DMSwarmCellDM, const char *[]);
+PETSC_EXTERN PetscErrorCode DMSwarmCellDMGetSort(DMSwarmCellDM, DMSwarmSort *);
+PETSC_EXTERN PetscErrorCode DMSwarmCellDMSetSort(DMSwarmCellDM, DMSwarmSort);
+PETSC_EXTERN PetscErrorCode DMSwarmCellDMGetBlockSize(DMSwarmCellDM, DM, PetscInt *);

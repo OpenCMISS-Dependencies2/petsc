@@ -27,12 +27,15 @@ Changes: Development
 
 - Add ``PetscCIntCast()``
 - Add ``PetscObjectHasFunction()`` to query for the presence of a composed method
+- Add ``PetscSortedCheckDupsCount()`` and ``PetscFindCount()``
 
 .. rubric:: Event Logging:
 
 .. rubric:: PetscViewer:
 
 .. rubric:: PetscDraw:
+
+- Add ``PetscDrawHGAddWeightedValue()``
 
 .. rubric:: AO:
 
@@ -45,6 +48,8 @@ Changes: Development
 .. rubric:: PF:
 
 .. rubric:: Vec:
+
+- Add ``PetscKDTree``, an implementation of K-d trees for efficient nearest-neighbor point searches. Includes ``PetscKDTreeCreate()``, ``PetscKDTreeDestroy()``, ``PetscKDTreeView()``, and then ``PetscKDTreeQueryPointsNearestNeighbor()`` for actually doing the nearest-neighbor query
 
 .. rubric:: PetscSection:
 
@@ -59,11 +64,17 @@ Changes: Development
 
 .. rubric:: PC:
 
+- Add `PCHYPREGetCFMarkers()` to extract Coarse/Fine splittings created by BoomerAMG from `PCHYPRE`, similar to `PCGetInterpolations()` and `PCGetCoarseOperators()`
+
 .. rubric:: KSP:
 
 .. rubric:: SNES:
 
+- Add ``DMPlexSetSNESVariableBounds()``
+
 .. rubric:: SNESLineSearch:
+
+- Add ``SNESLINESEARCHBISECTION`` as new SNES line search type, performing a bisection line search on the directional derivative
 
 .. rubric:: TS:
 
@@ -77,15 +88,24 @@ Changes: Development
 
 - Add ``DMSwarmSortRestorePointsPerCell()``
 - Change ``DMSwarmVectorGetField()`` and add ``DMSwarmVectorDefineFields()`` to handle multiple fields
-- Add ``DMSwarmGetCoordinateField()`` and ``DMSwarmSetCoordinateField()``
 - Add ``DMSwarmComputeMoments()``
-- Add ``DMSwarmPushCellDM()`` and ``DMSwarmPopCellDM()``
+- Add ``DMSwarmCellDMCreate()``, ``DMSwarmCellDMDestroy()``, ``DMSwarmCellDMView()``, ``DMSwarmCellDMGetDM()``, ``DMSwarmCellDMGetFields()``, ``DMSwarmCellDMGetCoordinateFields()``, ``DMSwarmCellDMGetCellID()``, ``DMSwarmCellDMGetSort()``, ``DMSwarmCellDMSetSort()``, and ``DMSwarmCellDMGetBlockSize()``
+- Add ``DMSwarmAddCellDM()``, ``DMSwarmSetCellDMActive()``, and ``DMSwarmGetCellDMActive()``
+- Add ``DMSwarmCreateGlobalVectorFromFields()``, ``DMSwarmDestroyGlobalVectorFromFields()``, ``DMSwarmCreateLocalVectorFromFields()``, and ``DMSwarmDestroyLocalVectorFromFields()``
+- Add ``DMSwarmSortDestroy()``
+- Add ``DMSwarmRemapType``, ``DMSwarmRemap()``, and ``DMSwarmDuplicate()``
+- Add ``DMSwarmGetType()``
+- Add ``DMSwarmGetCellDMByName()`` and ``DMSwarmGetCellDMNames()``
 
 .. rubric:: DMPlex:
 
 - Add ``DMPlexTransformGetMatchStrata()`` and ``DMPlexTransformSetMatchStrata()``
 - Deprecate ``DMPlexSetGlobalToNaturalSF()`` and ``DMPlexGetGlobalToNaturalSF()`` for existing ``DMSetNaturalSF()`` and ``DMGetNaturalSF()``
 - Add ``-dm_plex_box_label_bd`` to setup isoperiodicity when using ``-dm_plex_box_label_bd``
+- Change ``PetscViewerCGNSGetSolutionTime()`` to no longer error if "TimeValues" array isn't found in CGNS file
+- Add ``PetscViewerCGNSGetSolutionIteration()``
+- Add ``DMPlexGetInterpolatePreferTensor()`` and ``DMPlexSetInterpolatePreferTensor()``
+- Add ``PetscCallEGADS()``
 
 .. rubric:: FE/FV:
 
@@ -94,5 +114,7 @@ Changes: Development
 .. rubric:: DMStag:
 
 .. rubric:: DT:
+
+- Add ``PetscDSGetLowerBound()``, ``PetscDSSetLowerBound()``, ``PetscDSGetUpperBound()``, ``PetscDSSetUpperBound()``, ``PetscDSCopyBounds()``
 
 .. rubric:: Fortran:
