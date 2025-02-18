@@ -324,7 +324,6 @@ message(STATUS "PETSc configure options: '${PETSc_CONFIG}'")
 
 add_custom_target(PETSc
   ALL
-  COMMAND make clean
   COMMAND ${PETSc_DIR}/configure ${PETSc_CONFIG} ${PETSc_DIR}/.
   COMMAND ${CMAKE_COMMAND} -E env PETSC_DIR=${PETSc_MPI_PREFIX} make
   COMMAND ${CMAKE_COMMAND} -E env PETSC_DIR=${PETSc_MPI_PREFIX} make install
